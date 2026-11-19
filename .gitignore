@@ -5,3 +5,6 @@ obj/
 artifacts/
 publish/
 TestResults/
+
+# built by CI and committed on purpose so the release archive is downloadable
+!dist/FolderTools.zip

@@ -1,5 +1,12 @@
 # AGENTS.md
 
+## Репозиторий
+
+- GitHub: `faustpronis/windows-context-menu-.nomedia` (public). Ветка по умолчанию — `main`
+  (там только README и `.gitignore`), код приходит через PR из ветки с работой.
+- CI: `.github/workflows/build.yml` на `windows-latest` — build + test + артефакт
+  `FolderTools.zip`, релиз на тег `v*`.
+
 ## Что это
 
 `FolderTools` — утилита для Windows: добавляет в контекстное меню папки пункт с

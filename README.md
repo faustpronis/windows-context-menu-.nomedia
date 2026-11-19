@@ -33,7 +33,9 @@ D:\SHARE\SYNCTHING\
 
 ## Установка
 
-1. Скопируйте папку с утилитой, например в `C:\Tools\FolderTools`.
+1. Скачайте готовый архив `dist/FolderTools.zip` из репозитория (он собран CI на
+   `windows-latest`) и распакуйте, например в `C:\Tools\FolderTools`.
+   Свежую сборку также можно взять в артефактах GitHub Actions.
 2. Запустите `install.bat` (или `FolderTools.exe install`) — пункт появится в
    контекстном меню папок.
 
