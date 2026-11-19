@@ -6,8 +6,6 @@ if not exist "%EXE%" (
   echo FolderTools.exe not found next to this script.
   exit /b 1
 )
-"%EXE%" install
-echo.
-echo FolderTools has been added to the folder context menu.
-echo Right-click a folder (or empty space inside it) to see the menu.
+rem The tool is a WinExe, so cmd would not wait for it; /wait keeps the output ordered.
+start /wait "" "%EXE%" -i
 endlocal

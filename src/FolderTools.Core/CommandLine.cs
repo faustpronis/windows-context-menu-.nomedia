@@ -10,6 +10,7 @@ namespace FolderTools.Core
         Install,
         Uninstall,
         SetDeskEdit,
+        Version,
         Help,
         Unknown
     }
@@ -56,15 +57,31 @@ namespace FolderTools.Core
                 case "deskedit":
                     return new ParsedCommand(CommandKind.Deskedit, first, null);
                 case "install":
+                case "-i":
+                case "/i":
+                case "--install":
                     return new ParsedCommand(CommandKind.Install, null, null);
                 case "uninstall":
+                case "remove":
+                case "-r":
+                case "/r":
+                case "-u":
+                case "/u":
+                case "-remove":
+                case "--remove":
+                case "--uninstall":
                     return new ParsedCommand(CommandKind.Uninstall, null, null);
                 case "set-deskedit":
                     return new ParsedCommand(CommandKind.SetDeskEdit, null, first);
+                case "-v":
+                case "/v":
+                case "--version":
+                case "version":
+                    return new ParsedCommand(CommandKind.Version, null, null);
                 case "/?":
                 case "-?":
                 case "/h":
-                case "/help":
+                case "-h":
                 case "--help":
                 case "help":
                     return new ParsedCommand(CommandKind.Help, null, null);
@@ -83,10 +100,11 @@ namespace FolderTools.Core
             "FolderTools — инструменты для текущей папки.\n" +
             "\n" +
             "Использование:\n" +
-            "  FolderTools.exe nomedia \"<папка>\"     Создать или обновить .nomedia\n" +
-            "  FolderTools.exe deskedit \"<папка>\"     Открыть desktop.ini в DeskEdit\n" +
-            "  FolderTools.exe install                Добавить пункт в контекстное меню папки\n" +
-            "  FolderTools.exe uninstall              Удалить пункт из контекстного меню\n" +
-            "  FolderTools.exe set-deskedit \"<путь>\"  Запомнить путь к DeskEdit.exe\n";
+            "  FolderTools.exe -i, --install           Добавить пункт в контекстное меню папки\n" +
+            "  FolderTools.exe -r, -remove, --uninstall Удалить пункт из контекстного меню\n" +
+            "  FolderTools.exe nomedia \"<папка>\"       Создать или обновить .nomedia\n" +
+            "  FolderTools.exe deskedit \"<папка>\"       Открыть desktop.ini в DeskEdit\n" +
+            "  FolderTools.exe set-deskedit \"<путь>\"    Запомнить путь к DeskEdit.exe\n" +
+            "  FolderTools.exe -v, --version            Показать версию\n";
     }
 }

@@ -92,5 +92,58 @@ namespace FolderTools.Tests
         {
             Assert.Equal(CommandKind.Unknown, CommandLine.Parse(new List<string> { "bogus" }).Kind);
         }
+
+        [Theory]
+        [InlineData("install")]
+        [InlineData("-i")]
+        [InlineData("--install")]
+        [InlineData("/i")]
+        [InlineData("-I")]
+        [InlineData("--INSTALL")]
+        public void Parse_InstallAliases(string verb)
+        {
+            Assert.Equal(CommandKind.Install, CommandLine.Parse(new List<string> { verb }).Kind);
+        }
+
+        [Theory]
+        [InlineData("uninstall")]
+        [InlineData("remove")]
+        [InlineData("-r")]
+        [InlineData("-remove")]
+        [InlineData("--remove")]
+        [InlineData("--uninstall")]
+        [InlineData("/r")]
+        [InlineData("-R")]
+        public void Parse_UninstallAliases(string verb)
+        {
+            Assert.Equal(CommandKind.Uninstall, CommandLine.Parse(new List<string> { verb }).Kind);
+        }
+
+        [Theory]
+        [InlineData("-v")]
+        [InlineData("--version")]
+        [InlineData("version")]
+        [InlineData("/v")]
+        public void Parse_VersionAliases(string verb)
+        {
+            Assert.Equal(CommandKind.Version, CommandLine.Parse(new List<string> { verb }).Kind);
+        }
+
+        [Theory]
+        [InlineData("-?")]
+        [InlineData("-h")]
+        [InlineData("--help")]
+        public void Parse_HelpAliases(string verb)
+        {
+            Assert.Equal(CommandKind.Help, CommandLine.Parse(new List<string> { verb }).Kind);
+        }
+
+        [Fact]
+        public void HelpText_MentionsInstallAndRemove()
+        {
+            Assert.Contains("-i", CommandLine.HelpText);
+            Assert.Contains("--install", CommandLine.HelpText);
+            Assert.Contains("-r", CommandLine.HelpText);
+        }
     }
 }

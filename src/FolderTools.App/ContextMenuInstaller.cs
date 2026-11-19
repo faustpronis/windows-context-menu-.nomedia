@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Reflection;
 using FolderTools.Core;
 using Microsoft.Win32;
 
@@ -18,7 +17,7 @@ namespace FolderTools.App
 
         private static string ExecutablePath
         {
-            get { return Assembly.GetEntryAssembly()!.Location; }
+            get { return ProductInfo.ExecutablePath; }
         }
 
         public static void Install()

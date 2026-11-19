@@ -1,5 +1,4 @@
 using System;
-using System.Globalization;
 using System.Windows.Forms;
 using FolderTools.Core;
 
@@ -35,12 +34,23 @@ namespace FolderTools.App
                     return RunDeskedit(command.Folder);
                 case CommandKind.Install:
                     ContextMenuInstaller.Install();
+                    Report(
+                        "FolderTools " + ProductInfo.Version + " зарегистрирован в контекстном меню папок.",
+                        ProductInfo.ExecutablePath + "\n" +
+                        "Правый клик по папке (или по пустому месту внутри неё) → FolderTools.");
                     return 0;
                 case CommandKind.Uninstall:
                     ContextMenuInstaller.Uninstall();
+                    Report(
+                        "FolderTools удалён из контекстного меню папок.",
+                        "Если меню осталось открытым, закройте и откройте его снова.");
                     return 0;
                 case CommandKind.SetDeskEdit:
                     ContextMenuInstaller.SetDeskEditPath(command.Value);
+                    Report("Путь к DeskEdit сохранён.", command.Value);
+                    return 0;
+                case CommandKind.Version:
+                    Report(ProductInfo.VersionText, ProductInfo.ExecutablePath);
                     return 0;
                 case CommandKind.Help:
                     ShowInfo(CommandLine.HelpText);
@@ -49,6 +59,22 @@ namespace FolderTools.App
                     ShowError("Неизвестная команда. " + CommandLine.HelpText);
                     return 2;
             }
+        }
+
+        /// <summary>
+        /// Writes to the calling console when there is one, otherwise shows a dialog:
+        /// the same command is used both from a shell and from Explorer.
+        /// </summary>
+        private static void Report(string message, string? detail = null)
+        {
+            string text = string.IsNullOrWhiteSpace(detail) ? message : message + "\n" + detail;
+            if (ConsoleSupport.TryAttach())
+            {
+                Console.WriteLine(text);
+                return;
+            }
+
+            ShowInfo(text);
         }
 
         private static int RunNomedia(string? folder)

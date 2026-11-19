@@ -31,13 +31,27 @@ D:\SHARE\SYNCTHING\
   и типа разделителей) — ничего не меняется.
 - Кодировка — UTF-8 без BOM, перевод строки — CRLF.
 
+## Скачать
+
+Готовый бинарник лежит в [Releases](https://github.com/faustpronis/windows-context-menu-.nomedia/releases):
+архив `FolderTools-<версия>.zip`. Текущая версия — **0.1.0**.
+
 ## Установка
 
-1. Скачайте готовый архив `dist/FolderTools.zip` из репозитория (он собран CI на
-   `windows-latest`) и распакуйте, например в `C:\Tools\FolderTools`.
-   Свежую сборку также можно взять в артефактах GitHub Actions.
-2. Запустите `install.bat` (или `FolderTools.exe install`) — пункт появится в
-   контекстном меню папок.
+1. Распакуйте архив целиком (нужны и `FolderTools.exe`, и `FolderTools.Core.dll`),
+   например в `C:\Tools\FolderTools`. Папку потом не перемещайте: путь к exe
+   записывается в реестр при регистрации.
+2. Зарегистрируйте пункт меню:
+
+   ```
+   FolderTools.exe -i
+   ```
+
+   или двойным кликом по `install.bat`.
+
+3. Правый клик по папке (или по пустому месту внутри неё) → **FolderTools**.
+
+Удаление — `FolderTools.exe -r` или `uninstall.bat`.
 
 ## DeskEdit (desktop.ini)
 
@@ -60,11 +74,16 @@ FolderTools.exe set-deskedit "C:\Tools\DeskEdit\DeskEdit_x64.exe"
 
 | Команда | Действие |
 |---|---|
+| `FolderTools.exe -i`, `--install` | Зарегистрировать пункт в контекстном меню папок |
+| `FolderTools.exe -r`, `-remove`, `--uninstall` | Убрать пункт из контекстного меню |
+| `FolderTools.exe -v`, `--version` | Показать версию |
 | `FolderTools.exe nomedia "<папка>"` | Создать или дополнить `.nomedia` |
 | `FolderTools.exe deskedit "<папка>"` | Открыть `desktop.ini` папки в DeskEdit |
-| `FolderTools.exe install` | Добавить пункт в контекстное меню |
-| `FolderTools.exe uninstall` | Убрать пункт из контекстного меню |
 | `FolderTools.exe set-deskedit "<путь>"` | Запомнить путь к `DeskEdit.exe` |
+| `FolderTools.exe -h`, `--help` | Справка |
+
+Без аргументов показывается справка. Если утилиту запустили из консоли, результат
+печатается в неё; при запуске двойным кликом — показывается окно.
 
 Настройки хранятся в `HKCU\Software\FolderTools`:
 
@@ -83,8 +102,10 @@ dotnet test src/FolderTools.Tests/FolderTools.Tests.csproj
 Тесты и ядро — на .NET 8 / netstandard2.0, их можно прогонять и на Linux.
 Иконка приложения генерируется скриптом `tools/make_icon.py` в `assets/app.ico`.
 
-CI (GitHub Actions, `.github/workflows/build.yml`) собирает проект, прогоняет тесты
-и на тег вида `v1.0.0` публикует релиз с архивом `FolderTools.zip`.
+CI (GitHub Actions, `.github/workflows/build.yml`) собирает проект и прогоняет тесты.
+При пуше тега вида `v0.1.0` версия из тега подставляется в сборку, проверяется,
+что она попала в exe, и публикуется релиз с архивом `FolderTools-<версия>.zip`.
+При обычном пуше в `main` тот же архив лежит в артефактах прогона.
 
 ## Структура
 

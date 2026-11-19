@@ -4,13 +4,23 @@
 
 - GitHub: `faustpronis/windows-context-menu-.nomedia` (public). Работа идёт в `main`.
 - CI: `.github/workflows/build.yml` на `windows-latest` — build + test + артефакт
-  `FolderTools.zip`, релиз на тег `v*`. Прогон на `main` зелёный.
-- `dist/FolderTools.zip` — архив, собранный CI, лежит в репозитории намеренно, чтобы
-  утилиту можно было скачать без похода в Actions. При изменениях кода его нужно
-  пересобрать (`dotnet build -c Release` + упаковка) и обновить.
+  `FolderTools-<версия>.zip`, релиз на тег `v*`.
+- Бинарники живут только в GitHub Releases (`FolderTools-<версия>.zip`); в репозитории
+  их нет — устаревшая копия в git уже удалена. Версия задаётся тегом `vX.Y.Z` и
+  подставляется в сборку через `-p:Version=`, шаг «Verify version stamp» падает,
+  если версия не попала в exe.
 - Проверить меню в проводнике в этой среде нельзя (нет Windows). Всё, что можно
   покрыть тестами — раскладка реестра (`MenuLayout`), формат, разбор аргументов —
   покрыто; остальное проверяется на живой Windows.
+
+## CLI
+
+- `-i`, `--install` — регистрация; `-r`, `-remove`, `--uninstall`, `-u` — удаление;
+  `-v`, `--version`; `-h`, `--help`; `nomedia <папка>`; `deskedit <папка>`;
+  `set-deskedit <путь>`. Разбор — `CommandLine.Parse`, алиасы покрыты тестами.
+- exe собирается как WinExe, чтобы меню не мигало консолью. Из-за этого `cmd` его не
+  ждёт: в bat-файлах запуск идёт через `start /wait`, а сам exe цепляется к консоли
+  родителя (`ConsoleSupport.TryAttach`), иначе печатать некуда.
 
 ## Что это
 
