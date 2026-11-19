@@ -68,6 +68,7 @@ namespace FolderTools.App
                 Registry.CurrentUser.DeleteSubKeyTree(shell + "\\" + DestinationMenuLayout.MoveRoot, false);
             }
 
+            ClearStores();
             foreach (RegistryEntry entry in DestinationMenuLayout.Build(exe, LoadSettings()))
             {
                 Write(entry);
@@ -91,6 +92,32 @@ namespace FolderTools.App
 
             Registry.CurrentUser.DeleteSubKeyTree(
                 MenuLayout.ClassesRoot + "\\" + MenuLayout.VerbStore, false);
+
+            ClearStores();
+        }
+
+        /// <summary>
+        /// Drops every shared verb store this tool owns. They live outside the per-target
+        /// shell keys, so a renamed or removed destination would otherwise linger.
+        /// </summary>
+        private static void ClearStores()
+        {
+            using (RegistryKey classes = Registry.CurrentUser.OpenSubKey(MenuLayout.ClassesRoot))
+            {
+                if (classes == null)
+                {
+                    return;
+                }
+
+                foreach (string name in classes.GetSubKeyNames())
+                {
+                    if (DestinationMenuLayout.IsOwnedStore(name))
+                    {
+                        Registry.CurrentUser.DeleteSubKeyTree(
+                            MenuLayout.ClassesRoot + "\\" + name, false);
+                    }
+                }
+            }
         }
 
         private static void Write(RegistryEntry entry)

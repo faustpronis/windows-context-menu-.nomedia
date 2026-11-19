@@ -56,6 +56,20 @@ namespace FolderTools.Tests
             Assert.DoesNotContain(entries, e => e.KeyPath.StartsWith(@"Software\Classes\*\shell\01copyto"));
         }
 
+        [Theory]
+        [InlineData("FolderTools.CopyTo.Files", true)]
+        [InlineData("FolderTools.MoveTo.Folders", true)]
+        [InlineData("FolderTools.CopyTo.Files.c3", true)]
+        [InlineData("FolderTools.Menu", false)]
+        [InlineData("FolderTools", false)]
+        [InlineData("Directory", false)]
+        [InlineData("", false)]
+        [InlineData(null, false)]
+        public void IsOwnedStore_OnlyMatchesThisToolsStores(string? name, bool expected)
+        {
+            Assert.Equal(expected, DestinationMenuLayout.IsOwnedStore(name));
+        }
+
         [Fact]
         public void Build_SkipsDestinationWithoutPatterns()
         {
@@ -70,7 +84,7 @@ namespace FolderTools.Tests
             var settings = SettingsWith(new Destination("abc123", "Text", @"D:\Text", new[] { "*.txt" }));
 
             var entries = DestinationMenuLayout.Build(Exe, settings);
-            var command = entries.Single(e => e.KeyPath == @"Software\Classes\*\shell\01copyto\shell\01\command");
+            var command = entries.Single(e => e.KeyPath == @"Software\Classes\*\shell\01copyto\ExtendedSubCommandsKey\Shell\01\command");
 
             Assert.Equal("\"" + Exe + "\" copyto \"abc123\" \"%1\"", command.Value);
         }
@@ -81,7 +95,7 @@ namespace FolderTools.Tests
             var settings = SettingsWith(new Destination("abc123", "Text", @"D:\Text", new[] { "*.txt" }));
 
             var entries = DestinationMenuLayout.Build(Exe, settings);
-            var command = entries.Single(e => e.KeyPath == @"Software\Classes\*\shell\02moveto\shell\01\command");
+            var command = entries.Single(e => e.KeyPath == @"Software\Classes\*\shell\02moveto\ExtendedSubCommandsKey\Shell\01\command");
 
             Assert.Contains(" moveto ", command.Value);
         }
@@ -97,10 +111,10 @@ namespace FolderTools.Tests
 
             var entries = DestinationMenuLayout.Build(Exe, settings);
 
-            Assert.Contains(entries, e => e.KeyPath == @"Software\Classes\*\shell\01copyto\shell\cat01" && e.Name == "MUIVerb" && e.Value == "Фото");
-            Assert.Contains(entries, e => e.KeyPath == @"Software\Classes\*\shell\01copyto\shell\cat01\shell\01\command");
-            Assert.Contains(entries, e => e.KeyPath == @"Software\Classes\*\shell\01copyto\shell\cat01\shell\02\command");
-            Assert.Contains(entries, e => e.KeyPath == @"Software\Classes\*\shell\01copyto\shell\01\command");
+            Assert.Contains(entries, e => e.KeyPath == @"Software\Classes\*\shell\01copyto\ExtendedSubCommandsKey\Shell\cat01" && e.Name == "MUIVerb" && e.Value == "Фото");
+            Assert.Contains(entries, e => e.KeyPath == @"Software\Classes\*\shell\01copyto\ExtendedSubCommandsKey\Shell\cat01\ExtendedSubCommandsKey\Shell\01\command");
+            Assert.Contains(entries, e => e.KeyPath == @"Software\Classes\*\shell\01copyto\ExtendedSubCommandsKey\Shell\cat01\ExtendedSubCommandsKey\Shell\02\command");
+            Assert.Contains(entries, e => e.KeyPath == @"Software\Classes\*\shell\01copyto\ExtendedSubCommandsKey\Shell\01\command");
         }
 
         [Fact]
@@ -112,7 +126,7 @@ namespace FolderTools.Tests
             settings.Destinations.Add(new Destination("d2", "Текст", @"D:\Text", new[] { "*.txt" }));
 
             var entries = DestinationMenuLayout.Build(Exe, settings);
-            var topLevel = entries.Single(e => e.KeyPath == @"Software\Classes\*\shell\01copyto\shell\01" && e.Name == "MUIVerb");
+            var topLevel = entries.Single(e => e.KeyPath == @"Software\Classes\*\shell\01copyto\ExtendedSubCommandsKey\Shell\01" && e.Name == "MUIVerb");
 
             Assert.Equal("Текст", topLevel.Value);
         }

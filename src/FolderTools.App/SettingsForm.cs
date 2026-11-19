@@ -25,7 +25,6 @@ namespace FolderTools.App
         private readonly TextBox _path = new TextBox();
         private readonly TextBox _patternInput = new TextBox();
         private readonly Label _hint = new Label();
-        private readonly CheckBox _categoryMode = new CheckBox();
         private bool _loading;
 
         public SettingsForm()
@@ -153,12 +152,6 @@ namespace FolderTools.App
             _hint.ForeColor = Color.FromArgb(80, 80, 80);
             details.Controls.Add(_hint, 1, 5);
 
-            _categoryMode.Text = "Показывать этот пункт в подменю категории";
-            _categoryMode.AutoSize = true;
-            _categoryMode.Enabled = false;
-            _categoryMode.Visible = false;
-            details.Controls.Add(_categoryMode, 1, 6);
-
             split.Panel2.Controls.Add(details);
             page.Controls.Add(split);
             return page;
@@ -197,7 +190,7 @@ namespace FolderTools.App
                 _working.Categories.Add(new DestinationCategory(Guid.NewGuid().ToString("N"), name));
                 input.Clear();
                 reload();
-                LoadCategoryChoices();
+                LoadDestinations();
             }));
 
             buttons.Controls.Add(MakeButton("Удалить", () =>
@@ -217,7 +210,7 @@ namespace FolderTools.App
 
                 _working.Categories.RemoveAt(index);
                 reload();
-                LoadCategoryChoices();
+                LoadDestinations();
             }));
 
             reload();
@@ -311,13 +304,12 @@ namespace FolderTools.App
             {
                 _destinations.SelectedIndex = Math.Min(Math.Max(selected, 0), _destinations.Items.Count - 1);
             }
-            else
-            {
-                ShowSelectedDestination();
-            }
 
             _loading = false;
-            LoadCategoryChoices();
+
+            // The selection change above fires while _loading is set, so the detail
+            // fields are filled here instead.
+            ShowSelectedDestination();
         }
 
         private string? CategoryName(string? categoryId)
@@ -394,6 +386,7 @@ namespace FolderTools.App
                 _path.Text = string.Empty;
                 _patterns.Items.Clear();
                 _loading = false;
+                LoadCategoryChoices();
                 UpdateHint();
                 return;
             }
