@@ -12,6 +12,7 @@ namespace FolderTools.Core
         Uninstall,
         SetDeskEdit,
         Settings,
+        ShellNew,
         CopyTo,
         MoveTo,
         Version,
@@ -62,6 +63,10 @@ namespace FolderTools.Core
             {
                 case "nomedia":
                     return new ParsedCommand(CommandKind.Nomedia, first, null);
+                case "shellnew":
+                    // Registered as "shellnew %1": the shell passes the placeholder file
+                    // it created for the New menu entry.
+                    return new ParsedCommand(CommandKind.ShellNew, first, null);
                 case "deskedit":
                     return new ParsedCommand(CommandKind.Deskedit, first, null);
                 case "copyto":
@@ -128,6 +133,7 @@ namespace FolderTools.Core
             "  FolderTools.exe -i, --install            Добавить пункт в контекстное меню папки\n" +
             "  FolderTools.exe -r, -remove, --uninstall Удалить пункт из контекстного меню\n" +
             "  FolderTools.exe nomedia \"<папка>\"        Создать или обновить .nomedia\n" +
+            "  FolderTools.exe shellnew \"<файл>\"         Обработать файл из меню «Создать»\n" +
             "  FolderTools.exe deskedit \"<папка>\"        Открыть desktop.ini в DeskEdit\n" +
             "  FolderTools.exe set-deskedit \"<путь>\"     Запомнить путь к DeskEdit.exe\n" +
             "  FolderTools.exe -v, --version            Показать версию\n";

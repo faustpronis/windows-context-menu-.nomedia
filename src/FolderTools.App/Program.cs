@@ -32,6 +32,8 @@ namespace FolderTools.App
             {
                 case CommandKind.Nomedia:
                     return RunNomedia(command.Folder);
+                case CommandKind.ShellNew:
+                    return RunShellNew(command.Folder);
                 case CommandKind.Deskedit:
                     return RunDeskedit(command.Folder);
                 case CommandKind.Install:
@@ -172,6 +174,23 @@ namespace FolderTools.App
                     break;
             }
 
+            return 0;
+        }
+
+        /// <summary>
+        /// Turns the placeholder Explorer creates for the New menu entry into a real
+        /// .nomedia. Nothing is reported on success: the entry is meant to behave like
+        /// the built-in "New folder" command.
+        /// </summary>
+        private static int RunShellNew(string? placeholder)
+        {
+            if (string.IsNullOrWhiteSpace(placeholder))
+            {
+                ShowError("Не передан файл, созданный проводником.");
+                return 2;
+            }
+
+            ShellNewService.CreateFromPlaceholder(placeholder!, DateTime.Now);
             return 0;
         }
 

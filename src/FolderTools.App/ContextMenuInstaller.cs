@@ -46,6 +46,11 @@ namespace FolderTools.App
                 Write(entry);
             }
 
+            foreach (RegistryEntry entry in MenuLayout.BuildShellNew(exe))
+            {
+                Write(entry);
+            }
+
             using (RegistryKey config = Registry.CurrentUser.CreateSubKey(ConfigKey))
             {
                 config.SetValue("InstalledExe", exe);
@@ -81,6 +86,11 @@ namespace FolderTools.App
             {
                 Registry.CurrentUser.DeleteSubKeyTree(
                     MenuLayout.ClassesRoot + "\\" + target + @"\shell\" + MenuLayout.MenuKey, false);
+            }
+
+            foreach (RegistryEntry entry in MenuLayout.BuildShellNew(ExecutablePath))
+            {
+                Registry.CurrentUser.DeleteSubKeyTree(entry.KeyPath, false);
             }
 
             foreach (string target in MenuLayout.FileTargets)

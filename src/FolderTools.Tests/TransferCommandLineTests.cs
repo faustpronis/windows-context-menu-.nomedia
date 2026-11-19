@@ -68,6 +68,15 @@ namespace FolderTools.Tests
         public void ExistingVerbsStillParse()
         {
             Assert.Equal(CommandKind.Nomedia, CommandLine.Parse(new[] { "nomedia", @"C:\x" }).Kind);
+        }
+
+        [Fact]
+        public void ShellNewVerb_TakesPlaceholderPath()
+        {
+            ParsedCommand command = CommandLine.Parse(new[] { "shellnew", @"C:\X\Новый.nomedia" });
+
+            Assert.Equal(CommandKind.ShellNew, command.Kind);
+            Assert.Equal(@"C:\X\Новый.nomedia", command.Folder);
             Assert.Equal(CommandKind.Deskedit, CommandLine.Parse(new[] { "deskedit", @"C:\x" }).Kind);
             Assert.Equal(CommandKind.Install, CommandLine.Parse(new[] { "-i" }).Kind);
             Assert.Equal(CommandKind.Uninstall, CommandLine.Parse(new[] { "-r" }).Kind);

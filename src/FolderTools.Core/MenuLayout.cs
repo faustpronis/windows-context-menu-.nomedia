@@ -80,6 +80,47 @@ namespace FolderTools.Core
         }
 
         /// <summary>
+        /// Registration for the "New" submenu entry.
+        ///
+        /// ShellNew lives on a file type, not on a folder, so the tool registers its own
+        /// ProgID plus a matching extension. The extension is the one Explorer will use
+        /// for the generated name; the entry then replaces that placeholder with a real
+        /// .nomedia, because ShellNew cannot name a file exactly ".nomedia".
+        /// </summary>
+        public static IReadOnlyList<RegistryEntry> BuildShellNew(string exePath)
+        {
+            if (string.IsNullOrWhiteSpace(exePath))
+            {
+                throw new ArgumentException("Executable path must not be empty.", nameof(exePath));
+            }
+
+            var entries = new List<RegistryEntry>();
+
+            entries.Add(new RegistryEntry(ClassesRoot + "\\" + ShellNewExtension, null, ShellNewProgId));
+            entries.Add(new RegistryEntry(ClassesRoot + "\\" + ShellNewExtension, "Content Type", "text/plain"));
+            entries.Add(new RegistryEntry(ClassesRoot + "\\" + ShellNewExtension, "PerceivedType", "text"));
+
+            string progId = ClassesRoot + "\\" + ShellNewProgId;
+            entries.Add(new RegistryEntry(progId, null, "Файл .nomedia"));
+            entries.Add(new RegistryEntry(progId, "FriendlyTypeName", "Файл .nomedia"));
+
+            // Command rather than NullFile: the shell hands the generated placeholder to
+            // the tool, which writes the real .nomedia and drops the placeholder.
+            entries.Add(new RegistryEntry(
+                progId + @"\ShellNew",
+                "Command",
+                "\"" + exePath + "\" shellnew \"%1\""));
+
+            // Icon and label shown in the New submenu.
+            entries.Add(new RegistryEntry(progId + @"\DefaultIcon", null, "\"" + exePath + "\",0"));
+
+            return entries;
+        }
+
+        private const string ShellNewExtension = ".nomedia";
+        private const string ShellNewProgId = "FolderTools.nomedia";
+
+        /// <summary>
         /// %V is the folder for a folder icon and for the empty area inside it;
         /// %1 is empty for background clicks, so it cannot be used here.
         /// </summary>
