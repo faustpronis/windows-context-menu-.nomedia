@@ -2,10 +2,15 @@
 
 ## Репозиторий
 
-- GitHub: `faustpronis/windows-context-menu-.nomedia` (public). Ветка по умолчанию — `main`
-  (там только README и `.gitignore`), код приходит через PR из ветки с работой.
+- GitHub: `faustpronis/windows-context-menu-.nomedia` (public). Работа идёт в `main`.
 - CI: `.github/workflows/build.yml` на `windows-latest` — build + test + артефакт
-  `FolderTools.zip`, релиз на тег `v*`.
+  `FolderTools.zip`, релиз на тег `v*`. Прогон на `main` зелёный.
+- `dist/FolderTools.zip` — архив, собранный CI, лежит в репозитории намеренно, чтобы
+  утилиту можно было скачать без похода в Actions. При изменениях кода его нужно
+  пересобрать (`dotnet build -c Release` + упаковка) и обновить.
+- Проверить меню в проводнике в этой среде нельзя (нет Windows). Всё, что можно
+  покрыть тестами — раскладка реестра (`MenuLayout`), формат, разбор аргументов —
+  покрыто; остальное проверяется на живой Windows.
 
 ## Что это
 
