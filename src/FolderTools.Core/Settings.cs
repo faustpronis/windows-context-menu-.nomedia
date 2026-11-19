@@ -48,6 +48,13 @@ namespace FolderTools.Core
         /// <summary>Category this destination belongs to, or null for the top level.</summary>
         public string? Category { get; set; }
 
+        /// <summary>
+        /// Icon for this menu entry, stored relative to the installation folder
+        /// ("icons\name.ico") so the whole folder stays movable. Null means the
+        /// tool's own icon.
+        /// </summary>
+        public string? IconPath { get; set; }
+
         /// <summary>True when at least one usable pattern is configured.</summary>
         public bool IsEnabled => Patterns.Any(p => ExtensionPattern.Normalize(p).Length > 0);
 
@@ -82,7 +89,11 @@ namespace FolderTools.Core
 
         public Destination Clone()
         {
-            return new Destination(Id, Name, Path, Patterns) { Category = Category };
+            return new Destination(Id, Name, Path, Patterns)
+            {
+                Category = Category,
+                IconPath = IconPath
+            };
         }
     }
 
@@ -127,13 +138,24 @@ namespace FolderTools.Core
 
         public List<Destination> Destinations { get; set; }
 
+        /// <summary>
+        /// Path to the desktop.ini editor. Stored relatively when the editor sits
+        /// inside the installation folder, so the whole folder stays movable.
+        /// </summary>
+        public string? DeskEditPath { get; set; }
+
+        /// <summary>Whether a confirmation is shown after a successful transfer.</summary>
+        public bool ShowSuccess { get; set; }
+
         public FolderToolsSettings Clone()
         {
             return new FolderToolsSettings
             {
                 SchemaVersion = SchemaVersion,
                 Categories = Categories.Select(c => c.Clone()).ToList(),
-                Destinations = Destinations.Select(d => d.Clone()).ToList()
+                Destinations = Destinations.Select(d => d.Clone()).ToList(),
+                DeskEditPath = DeskEditPath,
+                ShowSuccess = ShowSuccess
             };
         }
 

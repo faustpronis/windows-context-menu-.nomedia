@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 using FolderTools.Core;
@@ -24,6 +25,10 @@ namespace FolderTools.App
         private readonly TextBox _name = new TextBox();
         private readonly TextBox _path = new TextBox();
         private readonly TextBox _patternInput = new TextBox();
+        private readonly TextBox _iconPath = new TextBox();
+        private readonly PictureBox _iconPreview = new PictureBox();
+        private readonly TextBox _deskEditPath = new TextBox();
+        private readonly CheckBox _showSuccess = new CheckBox();
         private readonly Label _hint = new Label();
         private bool _loading;
 
@@ -38,8 +43,31 @@ namespace FolderTools.App
             Size = new Size(860, 620);
             Font = new Font("Segoe UI", 9F);
 
+            // Without this WinForms falls back to its own generic icon, which is what
+            // showed in the title bar and on the taskbar instead of the tool's icon.
+            Icon = LoadAppIcon();
+
             BuildLayout();
             LoadDestinations();
+            LoadMisc();
+        }
+
+        private static Icon? LoadAppIcon()
+        {
+            try
+            {
+                Icon? icon = Icon.ExtractAssociatedIcon(ProductInfo.ExecutablePath);
+                if (icon != null)
+                {
+                    return icon;
+                }
+            }
+            catch (Exception)
+            {
+                // A missing or unreadable exe icon must not stop the window opening.
+            }
+
+            return null;
         }
 
         private void BuildLayout()
@@ -47,6 +75,7 @@ namespace FolderTools.App
             var tabs = new TabControl { Dock = DockStyle.Fill };
             tabs.TabPages.Add(BuildDestinationsPage());
             tabs.TabPages.Add(BuildCategoriesPage());
+            tabs.TabPages.Add(BuildMiscPage());
             tabs.TabPages.Add(BuildAboutPage());
 
             var buttons = new FlowLayoutPanel
@@ -83,7 +112,16 @@ namespace FolderTools.App
             _destinations.IntegralHeight = false;
             _destinations.SelectedIndexChanged += (s, e) => ShowSelectedDestination();
 
-            var listButtons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 38 };
+            // AutoSize on the panel lets it grow when the four buttons do not fit on one
+            // row; a fixed height clipped the wrapped second row and hid its labels.
+            var listButtons = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Bottom,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                WrapContents = true,
+                Padding = new Padding(0, 2, 0, 2)
+            };
             listButtons.Controls.Add(MakeButton("Добавить", AddDestination));
             listButtons.Controls.Add(MakeButton("Удалить", RemoveDestination));
             listButtons.Controls.Add(MakeButton("Вверх", () => MoveDestination(-1)));
@@ -96,7 +134,7 @@ namespace FolderTools.App
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 2,
-                RowCount = 8,
+                RowCount = 10,
                 Padding = new Padding(8, 0, 0, 0)
             };
             details.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
@@ -123,10 +161,32 @@ namespace FolderTools.App
             _categories.SelectedIndexChanged += (s, e) => UpdateSelected(d => d.Category = SelectedCategoryId());
             details.Controls.Add(_categories, 1, 2);
 
-            details.Controls.Add(new Label { Text = "Расширения:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 3);
+            details.Controls.Add(new Label { Text = "Иконка:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 3);
+            var iconRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, Height = 30 };
+            iconRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 34));
+            iconRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            iconRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));
+
+            _iconPreview.Dock = DockStyle.Fill;
+            _iconPreview.SizeMode = PictureBoxSizeMode.Zoom;
+            _iconPreview.BackColor = SystemColors.Control;
+            _iconPreview.BorderStyle = BorderStyle.FixedSingle;
+            _iconPreview.Margin = new Padding(0, 1, 4, 1);
+            _iconPreview.Click += (s, e) => BrowseIcon();
+
+            _iconPath.Dock = DockStyle.Fill;
+            _iconPath.ReadOnly = true;
+            _iconPath.BackColor = SystemColors.Window;
+
+            iconRow.Controls.Add(_iconPreview, 0, 0);
+            iconRow.Controls.Add(_iconPath, 1, 0);
+            iconRow.Controls.Add(MakeButton("Обзор…", BrowseIcon), 2, 0);
+            details.Controls.Add(iconRow, 1, 3);
+
+            details.Controls.Add(new Label { Text = "Расширения:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 4);
             _patterns.Dock = DockStyle.Fill;
             _patterns.IntegralHeight = false;
-            details.Controls.Add(_patterns, 1, 3);
+            details.Controls.Add(_patterns, 1, 4);
 
             var patternRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, Height = 30 };
             patternRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -145,12 +205,12 @@ namespace FolderTools.App
             patternRow.Controls.Add(_patternInput, 0, 0);
             patternRow.Controls.Add(MakeButton("Добавить", AddPattern), 1, 0);
             patternRow.Controls.Add(MakeButton("Удалить", RemovePattern), 2, 0);
-            details.Controls.Add(patternRow, 1, 4);
+            details.Controls.Add(patternRow, 1, 5);
 
             _hint.AutoSize = false;
             _hint.Dock = DockStyle.Fill;
             _hint.ForeColor = Color.FromArgb(80, 80, 80);
-            details.Controls.Add(_hint, 1, 5);
+            details.Controls.Add(_hint, 1, 6);
 
             split.Panel2.Controls.Add(details);
             page.Controls.Add(split);
@@ -230,6 +290,73 @@ namespace FolderTools.App
             return page;
         }
 
+        private TabPage BuildMiscPage()
+        {
+            var page = new TabPage("Прочее") { Padding = new Padding(12) };
+
+            var layout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Top,
+                ColumnCount = 2,
+                RowCount = 3,
+                AutoSize = true,
+                Height = 130
+            };
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 160));
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+
+            layout.Controls.Add(new Label { Text = "DeskEdit (desktop.ini):", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
+            var editorRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Height = 30 };
+            editorRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            editorRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));
+            _deskEditPath.Dock = DockStyle.Fill;
+            _deskEditPath.ReadOnly = true;
+            _deskEditPath.BackColor = SystemColors.Window;
+            editorRow.Controls.Add(_deskEditPath, 0, 0);
+            editorRow.Controls.Add(MakeButton("Обзор…", BrowseDeskEdit), 1, 0);
+            layout.Controls.Add(editorRow, 1, 0);
+
+            _showSuccess.Text = "Показывать подтверждение после копирования или перемещения";
+            _showSuccess.AutoSize = true;
+            _showSuccess.Anchor = AnchorStyles.Left;
+            layout.Controls.Add(new Label { Text = "Уведомления:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
+            layout.Controls.Add(_showSuccess, 1, 1);
+
+            var note = new Label
+            {
+                Dock = DockStyle.Top,
+                AutoSize = false,
+                Height = 96,
+                Padding = new Padding(0, 12, 0, 0),
+                ForeColor = Color.FromArgb(80, 80, 80),
+                Text = "Все настройки хранятся в файле " + SettingsStore.FileName
+                     + " рядом с FolderTools.exe, иконки — в подпапке "
+                     + AppPaths.IconsFolderName + ".\r\n"
+                     + "Пути внутри папки программы записываются относительными, поэтому "
+                     + "папку можно целиком скопировать или перенести.\r\n"
+                     + "Поле DeskEdit можно оставить пустым: тогда программа ищет "
+                     + "DeskEdit.exe рядом с собой и в C:\\Tools\\DeskEdit."
+            };
+
+            page.Controls.Add(note);
+            page.Controls.Add(layout);
+            return page;
+        }
+
+        private void BrowseDeskEdit()
+        {
+            using (var dialog = new OpenFileDialog())
+            {
+                dialog.Title = "Выберите DeskEdit.exe";
+                dialog.Filter = "Программы (*.exe)|*.exe|Все файлы (*.*)|*.*";
+                dialog.CheckFileExists = true;
+                if (dialog.ShowDialog(this) == DialogResult.OK)
+                {
+                    _deskEditPath.Text = dialog.FileName;
+                }
+            }
+        }
+
         private TabPage BuildAboutPage()
         {
             var page = new TabPage("Справка") { Padding = new Padding(12) };
@@ -276,6 +403,12 @@ namespace FolderTools.App
             var button = new Button { Text = text, AutoSize = true, Height = 28, Margin = new Padding(0, 0, 6, 0) };
             button.Click += (s, e) => onClick();
             return button;
+        }
+
+        private void LoadMisc()
+        {
+            _deskEditPath.Text = AppConfig.DeskEditPath ?? string.Empty;
+            _showSuccess.Checked = AppConfig.ShowSuccess;
         }
 
         private void LoadDestinations()
@@ -384,6 +517,7 @@ namespace FolderTools.App
             {
                 _name.Text = string.Empty;
                 _path.Text = string.Empty;
+                ShowDestinationIcon(null);
                 _patterns.Items.Clear();
                 _loading = false;
                 LoadCategoryChoices();
@@ -393,6 +527,7 @@ namespace FolderTools.App
 
             _name.Text = destination.Name;
             _path.Text = destination.Path;
+            ShowDestinationIcon(destination.IconPath);
             _patterns.Items.Clear();
             foreach (string pattern in destination.Patterns)
             {
@@ -506,6 +641,10 @@ namespace FolderTools.App
                 return;
             }
 
+            // The icon lives in the icons folder, so it would otherwise stay behind
+            // as an orphan that nothing in the settings refers to.
+            IconStore.Delete(BaseDirectory, destination.IconPath);
+
             _working.Destinations.RemoveAt(index);
             LoadDestinations();
         }
@@ -525,6 +664,82 @@ namespace FolderTools.App
             LoadDestinations();
             _destinations.SelectedIndex = target;
         }
+
+        /// <summary>
+        /// Shows the configured icon, or a blank preview when the entry uses the
+        /// tool's own icon.
+        /// </summary>
+        private void ShowDestinationIcon(string? storedIconPath)
+        {
+            _iconPreview.Image?.Dispose();
+            _iconPreview.Image = null;
+
+            if (string.IsNullOrWhiteSpace(storedIconPath))
+            {
+                _iconPath.Text = "(иконка программы)";
+                return;
+            }
+
+            string full = AppPaths.Resolve(BaseDirectory, storedIconPath);
+            _iconPath.Text = storedIconPath;
+
+            try
+            {
+                if (File.Exists(full))
+                {
+                    using (var icon = new Icon(full))
+                    {
+                        _iconPreview.Image = icon.ToBitmap();
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // A broken or unsupported icon file must not break the window; the
+                // path stays visible so the user can pick another one.
+            }
+        }
+
+        private void BrowseIcon()
+        {
+            Destination? destination = Selected;
+            if (destination == null)
+            {
+                return;
+            }
+
+            using (var dialog = new OpenFileDialog())
+            {
+                dialog.Title = "Выберите иконку";
+                dialog.Filter = "Иконки (*.ico)|*.ico|Все файлы (*.*)|*.*";
+                dialog.CheckFileExists = true;
+                if (dialog.ShowDialog(this) != DialogResult.OK)
+                {
+                    return;
+                }
+
+                try
+                {
+                    destination.IconPath = IconStore.Import(
+                        BaseDirectory,
+                        destination.Id,
+                        dialog.FileName);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(
+                        "Не удалось скопировать иконку:\n" + ex.Message,
+                        "FolderTools",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                    return;
+                }
+
+                ShowDestinationIcon(destination.IconPath);
+            }
+        }
+
+        private static string BaseDirectory => AppDomain.CurrentDomain.BaseDirectory;
 
         private void BrowseFolder()
         {
@@ -595,6 +810,14 @@ namespace FolderTools.App
                     return;
                 }
             }
+
+            // The misc fields must go into _working before the single save below:
+            // writing them separately would let this save overwrite them with the
+            // values read when the window opened.
+            _working.DeskEditPath = string.IsNullOrWhiteSpace(_deskEditPath.Text)
+                ? string.Empty
+                : AppPaths.ToStored(BaseDirectory, _deskEditPath.Text);
+            _working.ShowSuccess = _showSuccess.Checked;
 
             try
             {

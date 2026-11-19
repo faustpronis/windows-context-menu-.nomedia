@@ -74,7 +74,10 @@ namespace FolderTools.App
             }
 
             ClearStores();
-            foreach (RegistryEntry entry in DestinationMenuLayout.Build(exe, LoadSettings()))
+            foreach (RegistryEntry entry in DestinationMenuLayout.Build(
+                exe,
+                LoadSettings(),
+                AppDomain.CurrentDomain.BaseDirectory))
             {
                 Write(entry);
             }
@@ -150,10 +153,9 @@ namespace FolderTools.App
                 throw new FileNotFoundException("Файл не найден: " + path);
             }
 
-            using (RegistryKey config = Registry.CurrentUser.CreateSubKey(ConfigKey))
-            {
-                config.SetValue("DeskEditPath", path);
-            }
+            // The settings file is the single source of truth now; the registry copy
+            // only existed for older builds.
+            AppConfig.SetDeskEditPath(path);
         }
     }
 }

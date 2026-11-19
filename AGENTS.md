@@ -94,6 +94,12 @@ dotnet test src/FolderTools.Tests/FolderTools.Tests.csproj
   Перемещение останавливается на первой ошибке, чтобы не потерять данные молча.
 - Настройки — `FolderTools.settings.json` рядом с exe, пишутся атомарно через
   `File.Replace`. Меню перестраивается при каждом сохранении (`RefreshMenu`).
+  Там же лежат `deskEditPath` и `showSuccess`; реестр — только регистрация меню
+  плюс чтение значений старых сборок (миграция в `AppConfig`).
+- Иконки пунктов: `IconStore.Import` копирует `.ico` в `icons\` и возвращает путь
+  через `AppPaths.ToStored`, то есть относительный. В реестр абсолютный путь
+  подставляет `DestinationMenuLayout.ResolveIconValue`; отсутствующий файл не
+  роняет пункт — тот просто остаётся без своей иконки.
 - Пути собираются через `PathUtil` (`Combine`, `GetLeafName`, `ToNative`), а не через
   `Path.Combine`: тесты идут на Linux, где `\` — обычный символ имени файла.
 

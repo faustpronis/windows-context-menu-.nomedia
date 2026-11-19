@@ -116,6 +116,17 @@ namespace FolderTools.Core
             return number == null ? fallback : (int)number.Value;
         }
 
+        public bool GetBool(string name, bool fallback)
+        {
+            JsonNode? node = this[name];
+            if (node is JsonBoolean flag)
+            {
+                return flag.Value;
+            }
+
+            return fallback;
+        }
+
         public JsonArray? GetArray(string name)
         {
             return this[name] as JsonArray;

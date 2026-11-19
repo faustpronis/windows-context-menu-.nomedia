@@ -122,13 +122,30 @@ namespace FolderTools.Core
                     entry.Add("category", destination.Category);
                 }
 
+                if (!string.IsNullOrWhiteSpace(destination.IconPath))
+                {
+                    entry.Add("icon", destination.IconPath);
+                }
+
                 destinations.Add(entry);
             }
 
-            return new JsonObject()
+            var root = new JsonObject()
                 .Add("schemaVersion", settings.SchemaVersion)
                 .Add("categories", categories)
                 .Add("destinations", destinations);
+
+            if (!string.IsNullOrWhiteSpace(settings.DeskEditPath))
+            {
+                root.Add("deskEditPath", settings.DeskEditPath);
+            }
+
+            if (settings.ShowSuccess)
+            {
+                root.Add("showSuccess", true);
+            }
+
+            return root;
         }
 
         /// <summary>
@@ -144,6 +161,8 @@ namespace FolderTools.Core
             }
 
             settings.SchemaVersion = root.GetInt("schemaVersion", 1);
+            settings.DeskEditPath = root.GetString("deskEditPath");
+            settings.ShowSuccess = root.GetBool("showSuccess", false);
 
             JsonArray? categories = root.GetArray("categories");
             if (categories != null)
@@ -188,7 +207,8 @@ namespace FolderTools.Core
                         entry.GetString("path") ?? string.Empty,
                         patterns)
                     {
-                        Category = entry.GetString("category")
+                        Category = entry.GetString("category"),
+                        IconPath = entry.GetString("icon")
                     });
                 }
             }

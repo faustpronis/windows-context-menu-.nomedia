@@ -51,9 +51,11 @@ namespace FolderTools.Core
     {
         public static ParsedCommand Parse(IReadOnlyList<string> args)
         {
+            // A double-click on the exe is the usual way to configure the tool, so the
+            // bare launch opens the settings window. Help is still one flag away.
             if (args == null || args.Count == 0)
             {
-                return new ParsedCommand(CommandKind.Help, null, null);
+                return new ParsedCommand(CommandKind.Settings, null, null);
             }
 
             string verb = (args[0] ?? string.Empty).Trim();
@@ -127,6 +129,8 @@ namespace FolderTools.Core
 
         public static string HelpText =>
             "FolderTools — инструменты для текущей папки.\n" +
+            "\n" +
+            "Запуск без аргументов открывает окно настроек.\n" +
             "\n" +
             "Использование:\n" +
             "  FolderTools.exe settings                  Открыть настройки\n" +

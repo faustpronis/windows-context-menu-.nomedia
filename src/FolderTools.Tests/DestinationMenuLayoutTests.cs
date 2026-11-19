@@ -1,3 +1,4 @@
+using System.IO;
 using System.Linq;
 using FolderTools.Core;
 using Xunit;
@@ -7,6 +8,23 @@ namespace FolderTools.Tests
     public class DestinationMenuLayoutTests
     {
         private const string Exe = @"C:\Tools\FolderTools\FolderTools.exe";
+
+        private static string NewFolder()
+        {
+            string path = System.IO.Path.Combine(
+                System.IO.Path.GetTempPath(),
+                "foldertools-menu-" + System.Guid.NewGuid().ToString("N"));
+            System.IO.Directory.CreateDirectory(path);
+            return path;
+        }
+
+        private static void Delete(string folder)
+        {
+            if (System.IO.Directory.Exists(folder))
+            {
+                System.IO.Directory.Delete(folder, true);
+            }
+        }
 
         private static FolderToolsSettings SettingsWith(params Destination[] destinations)
         {
@@ -68,6 +86,58 @@ namespace FolderTools.Tests
         public void IsOwnedStore_OnlyMatchesThisToolsStores(string? name, bool expected)
         {
             Assert.Equal(expected, DestinationMenuLayout.IsOwnedStore(name));
+        }
+
+        [Fact]
+        public void Build_UsesPerDestinationIconWhenFileExists()
+        {
+            string baseDir = NewFolder();
+            try
+            {
+                string icons = Path.Combine(baseDir, "icons");
+                Directory.CreateDirectory(icons);
+                string icon = Path.Combine(icons, "d1.ico");
+                File.WriteAllBytes(icon, new byte[] { 1, 2, 3 });
+
+                var destination = new Destination("d1", "Text", @"D:\Text", new[] { "*.txt" })
+                {
+                    IconPath = Path.Combine("icons", "d1.ico")
+                };
+                var settings = SettingsWith(destination);
+
+                var entries = DestinationMenuLayout.Build(Exe, settings, baseDir);
+
+                Assert.Contains(entries, e =>
+                    e.KeyPath == @"Software\Classes\*\shell\01copyto\ExtendedSubCommandsKey\Shell\01"
+                    && e.Name == "Icon"
+                    && e.Value == "\"" + icon + "\"");
+            }
+            finally
+            {
+                Delete(baseDir);
+            }
+        }
+
+        [Fact]
+        public void Build_FallsBackToNoIconWhenFileIsMissing()
+        {
+            string baseDir = NewFolder();
+            try
+            {
+                var destination = new Destination("d1", "Text", @"D:\Text", new[] { "*.txt" })
+                {
+                    IconPath = Path.Combine("icons", "gone.ico")
+                };
+
+                var entries = DestinationMenuLayout.Build(Exe, SettingsWith(destination), baseDir);
+
+                Assert.DoesNotContain(entries, e =>
+                    e.KeyPath.EndsWith(@"\Shell\01", System.StringComparison.Ordinal) && e.Name == "Icon");
+            }
+            finally
+            {
+                Delete(baseDir);
+            }
         }
 
         [Fact]

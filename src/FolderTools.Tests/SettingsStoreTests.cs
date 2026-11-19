@@ -201,5 +201,65 @@ namespace FolderTools.Tests
 
             Assert.Single(settings.EnabledDestinations());
         }
+
+        [Fact]
+        public void MiscOptions_RoundTripThroughJson()
+        {
+            var settings = new FolderToolsSettings
+            {
+                DeskEditPath = @"tools\DeskEdit.exe",
+                ShowSuccess = true
+            };
+
+            var restored = SettingsStore.FromJson(SettingsStore.ToJson(settings));
+
+            Assert.Equal(@"tools\DeskEdit.exe", restored.DeskEditPath);
+            Assert.True(restored.ShowSuccess);
+        }
+
+        [Fact]
+        public void MiscOptions_DefaultToOffWhenAbsent()
+        {
+            var restored = SettingsStore.FromJson(SettingsStore.ToJson(new FolderToolsSettings()));
+
+            Assert.Null(restored.DeskEditPath);
+            Assert.False(restored.ShowSuccess);
+        }
+
+        [Fact]
+        public void Clone_CopiesMiscOptions()
+        {
+            var settings = new FolderToolsSettings { DeskEditPath = "d.exe", ShowSuccess = true };
+
+            var clone = settings.Clone();
+
+            Assert.Equal("d.exe", clone.DeskEditPath);
+            Assert.True(clone.ShowSuccess);
+        }
+
+        [Fact]
+        public void IconPath_RoundTripsThroughJson()
+        {
+            var settings = new FolderToolsSettings();
+            settings.Destinations.Add(new Destination("d1", "Text", @"D:\Text", new[] { "*.txt" })
+            {
+                IconPath = Path.Combine("icons", "d1.ico")
+            });
+
+            var restored = SettingsStore.FromJson(SettingsStore.ToJson(settings));
+
+            Assert.Equal(Path.Combine("icons", "d1.ico"), restored.Destinations[0].IconPath);
+        }
+
+        [Fact]
+        public void IconPath_OmittedWhenNotSet()
+        {
+            var settings = new FolderToolsSettings();
+            settings.Destinations.Add(new Destination("d1", "Text", @"D:\Text", new[] { "*.txt" }));
+
+            string json = SettingsStore.ToJson(settings).ToJson();
+
+            Assert.DoesNotContain("\"icon\"", json);
+        }
     }
 }

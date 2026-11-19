@@ -52,9 +52,10 @@ namespace FolderTools.Tests
     public class CommandLineTests
     {
         [Fact]
-        public void Parse_NoArguments_ShowsHelp()
+        public void Parse_NoArguments_OpensSettings()
         {
-            Assert.Equal(CommandKind.Help, CommandLine.Parse(new List<string>()).Kind);
+            // A double-click on the exe is how the tool is normally configured.
+            Assert.Equal(CommandKind.Settings, CommandLine.Parse(new List<string>()).Kind);
         }
 
         [Fact]

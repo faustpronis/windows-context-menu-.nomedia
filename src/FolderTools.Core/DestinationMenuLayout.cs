@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 
 namespace FolderTools.Core
@@ -32,6 +33,19 @@ namespace FolderTools.Core
         /// the GUI but not yet enabled stays out of the menu.
         /// </summary>
         public static IReadOnlyList<RegistryEntry> Build(string exePath, FolderToolsSettings settings)
+        {
+            return Build(exePath, settings, PathUtil.GetDirectoryName(exePath));
+        }
+
+        /// <summary>
+        /// Registry entries for every configured destination, resolving per-entry icons
+        /// against <paramref name="baseDirectory"/> (the folder holding the exe), because
+        /// the settings file stores them relatively.
+        /// </summary>
+        public static IReadOnlyList<RegistryEntry> Build(
+            string exePath,
+            FolderToolsSettings settings,
+            string baseDirectory)
         {
             if (string.IsNullOrWhiteSpace(exePath))
             {
@@ -69,7 +83,8 @@ namespace FolderTools.Core
                     exePath,
                     target,
                     settings,
-                    allowCategories: true);
+                    allowCategories: true,
+                    baseDirectory);
 
                 AddSubmenu(
                     entries,
@@ -81,7 +96,8 @@ namespace FolderTools.Core
                     exePath,
                     target,
                     settings,
-                    allowCategories: true);
+                    allowCategories: true,
+                    baseDirectory);
             }
 
             return entries;
@@ -184,6 +200,25 @@ namespace FolderTools.Core
             return clauses.Count == 1 ? clauses[0] : "(" + string.Join(" OR ", clauses) + ")";
         }
 
+        /// <summary>
+        /// Registry "Icon" value for a destination: its own icon when one is configured
+        /// and still present, otherwise the tool's icon. A missing icon file must not
+        /// leave the entry without any icon at all.
+        /// </summary>
+        public static string? ResolveIconValue(string exePath, string baseDirectory, string? storedIconPath)
+        {
+            if (!string.IsNullOrWhiteSpace(storedIconPath))
+            {
+                string resolved = AppPaths.Resolve(baseDirectory, storedIconPath);
+                if (File.Exists(resolved))
+                {
+                    return "\"" + resolved + "\"";
+                }
+            }
+
+            return null;
+        }
+
         private static string QuoteAqs(string value)
         {
             return "\"" + value.Replace("\"", string.Empty) + "\"";
@@ -203,7 +238,8 @@ namespace FolderTools.Core
             string exePath,
             string target,
             FolderToolsSettings settings,
-            bool allowCategories)
+            bool allowCategories,
+            string baseDirectory)
         {
             entries.Add(new RegistryEntry(verbKey, "MUIVerb", label));
             entries.Add(new RegistryEntry(verbKey, "Icon", "\"" + exePath + "\",0"));
@@ -220,8 +256,8 @@ namespace FolderTools.Core
                 }
             }
 
-            AddChildren(entries, verbKey + @"\ExtendedSubCommandsKey\Shell", storeId, destinations, action, exePath, target, settings, allowCategories);
-            AddChildren(entries, MenuLayout.ClassesRoot + "\\" + storeId + @"\shell", storeId, destinations, action, exePath, target, settings, allowCategories);
+            AddChildren(entries, verbKey + @"\ExtendedSubCommandsKey\Shell", storeId, destinations, action, exePath, target, settings, allowCategories, baseDirectory);
+            AddChildren(entries, MenuLayout.ClassesRoot + "\\" + storeId + @"\shell", storeId, destinations, action, exePath, target, settings, allowCategories, baseDirectory);
         }
 
         private static void AddChildren(
@@ -233,7 +269,8 @@ namespace FolderTools.Core
             string exePath,
             string target,
             FolderToolsSettings settings,
-            bool allowCategories)
+            bool allowCategories,
+            string baseDirectory)
         {
             List<Destination> topLevel = destinations
                 .Where(d => !allowCategories || string.IsNullOrWhiteSpace(d.Category))
@@ -249,7 +286,7 @@ namespace FolderTools.Core
             int index = 1;
             foreach (Destination destination in topLevel)
             {
-                AddDestinationVerb(entries, shellPath + "\\" + index.ToString("00"), destination, action, exePath, target);
+                AddDestinationVerb(entries, shellPath + "\\" + index.ToString("00"), destination, action, exePath, target, baseDirectory);
                 index++;
             }
 
@@ -271,7 +308,8 @@ namespace FolderTools.Core
                     exePath,
                     target,
                     settings,
-                    allowCategories: false);
+                    allowCategories: false,
+                    baseDirectory);
 
                 categoryIndex++;
             }
@@ -283,9 +321,16 @@ namespace FolderTools.Core
             Destination destination,
             TransferAction action,
             string exePath,
-            string target)
+            string target,
+            string baseDirectory)
         {
             entries.Add(new RegistryEntry(verb, "MUIVerb", destination.DisplayName));
+
+            string? icon = ResolveIconValue(exePath, baseDirectory, destination.IconPath);
+            if (icon != null)
+            {
+                entries.Add(new RegistryEntry(verb, "Icon", icon));
+            }
 
             if (target != "Directory")
             {
