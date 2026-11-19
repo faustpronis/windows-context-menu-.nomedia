@@ -1,0 +1,96 @@
+using System.Collections.Generic;
+using FolderTools.Core;
+using Xunit;
+
+namespace FolderTools.Tests
+{
+    public class DeskeditServiceTests
+    {
+        private sealed class RecordingLauncher : IProcessLauncher
+        {
+            public string? FileName;
+            public string? Arguments;
+
+            public void Launch(string fileName, string arguments)
+            {
+                FileName = fileName;
+                Arguments = arguments;
+            }
+        }
+
+        [Fact]
+        public void OpenFolder_LaunchesEditorWithQuotedFolder()
+        {
+            var launcher = new RecordingLauncher();
+            var service = new DeskeditService(launcher, _ => true);
+
+            DeskeditOutcome outcome = service.OpenFolder(@"C:\Tools\DeskEdit\DeskEdit_x64.exe", @"D:\My Folder");
+
+            Assert.Equal(DeskeditOutcome.Launched, outcome);
+            Assert.Equal(@"C:\Tools\DeskEdit\DeskEdit_x64.exe", launcher.FileName);
+            Assert.Equal("\"D:\\My Folder\"", launcher.Arguments);
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("   ")]
+        public void OpenFolder_WithoutEditor_ReportsMissing(string? editor)
+        {
+            var service = new DeskeditService(new RecordingLauncher(), _ => true);
+            Assert.Equal(DeskeditOutcome.EditorMissing, service.OpenFolder(editor, @"D:\X"));
+        }
+
+        [Fact]
+        public void OpenFolder_WhenEditorFileAbsent_ReportsMissing()
+        {
+            var service = new DeskeditService(new RecordingLauncher(), _ => false);
+            Assert.Equal(DeskeditOutcome.EditorMissing, service.OpenFolder(@"C:\missing.exe", @"D:\X"));
+        }
+    }
+
+    public class CommandLineTests
+    {
+        [Fact]
+        public void Parse_NoArguments_ShowsHelp()
+        {
+            Assert.Equal(CommandKind.Help, CommandLine.Parse(new List<string>()).Kind);
+        }
+
+        [Fact]
+        public void Parse_NomediaWithFolder()
+        {
+            ParsedCommand command = CommandLine.Parse(new List<string> { "nomedia", @"D:\Share" });
+            Assert.Equal(CommandKind.Nomedia, command.Kind);
+            Assert.Equal(@"D:\Share", command.Folder);
+        }
+
+        [Fact]
+        public void Parse_VerbIsCaseInsensitive()
+        {
+            Assert.Equal(CommandKind.Deskedit, CommandLine.Parse(new List<string> { "DeskEdit", @"D:\X" }).Kind);
+        }
+
+        [Fact]
+        public void Parse_SetDeskEdit_KeepsPathAsValue()
+        {
+            ParsedCommand command = CommandLine.Parse(new List<string> { "set-deskedit", @"C:\Tools\DeskEdit.exe" });
+            Assert.Equal(CommandKind.SetDeskEdit, command.Kind);
+            Assert.Equal(@"C:\Tools\DeskEdit.exe", command.Value);
+        }
+
+        [Fact]
+        public void Parse_BarePath_IsTreatedAsNomediaTarget()
+        {
+            ParsedCommand command = CommandLine.Parse(new List<string> { @"D:\Share\Sync" });
+            Assert.Equal(CommandKind.Nomedia, command.Kind);
+            Assert.Equal(@"D:\Share\Sync", command.Folder);
+        }
+
+        [Fact]
+        public void Parse_UnknownVerb_IsUnknown()
+        {
+            Assert.Equal(CommandKind.Unknown, CommandLine.Parse(new List<string> { "bogus" }).Kind);
+        }
+    }
+}
