@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 using FolderTools.Core;
@@ -119,11 +120,14 @@ namespace FolderTools.App
             Destination? destination = settings.Destinations
                 .FirstOrDefault(d => string.Equals(d.Id, command.Folder, StringComparison.OrdinalIgnoreCase));
 
-            if (destination == null || string.IsNullOrWhiteSpace(destination.Path))
+            string? rejection = TransferRequestValidator.Validate(
+                destination,
+                command.Items,
+                path => Directory.Exists(path));
+
+            if (rejection != null)
             {
-                ShowError(
-                    "Папка назначения не найдена в настройках.\n\n" +
-                    "Откройте «FolderTools → Настройки…» и проверьте список папок.");
+                ShowError(rejection);
                 return 3;
             }
 
