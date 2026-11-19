@@ -1,0 +1,73 @@
+name: build
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore FolderTools.sln
+
+      - name: Build (Release)
+        run: dotnet build FolderTools.sln -c Release --no-restore
+
+      - name: Test
+        run: dotnet test src/FolderTools.Tests/FolderTools.Tests.csproj -c Release --no-build --logger "trx;LogFileName=results.trx"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: '**/TestResults/*.trx'
+          if-no-files-found: ignore
+
+      - name: Stage release files
+        shell: pwsh
+        run: |
+          $stage = "staging/FolderTools"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          $bin = "src/FolderTools.App/bin/Release/net48"
+          Copy-Item "$bin/FolderTools.exe"        $stage
+          Copy-Item "$bin/FolderTools.Core.dll"   $stage
+          Copy-Item "$bin/FolderTools.exe.config" $stage
+          Copy-Item "installer/install.bat"       $stage
+          Copy-Item "installer/uninstall.bat"     $stage
+          Copy-Item "README.md"                   $stage
+          Compress-Archive -Path $stage -DestinationPath "FolderTools.zip" -Force
+          Get-ChildItem $stage | Select-Object Name, Length
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FolderTools
+          path: FolderTools.zip
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" FolderTools.zip `
+            --title "${{ github.ref_name }}" `
+            --generate-notes
