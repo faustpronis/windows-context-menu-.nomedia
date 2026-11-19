@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Windows.Forms;
 using FolderTools.Core;
 
@@ -45,6 +46,12 @@ namespace FolderTools.App
                         "FolderTools удалён из контекстного меню папок.",
                         "Если меню осталось открытым, закройте и откройте его снова.");
                     return 0;
+                case CommandKind.Settings:
+                    return RunSettings();
+                case CommandKind.CopyTo:
+                    return RunTransfer(TransferAction.Copy, command);
+                case CommandKind.MoveTo:
+                    return RunTransfer(TransferAction.Move, command);
                 case CommandKind.SetDeskEdit:
                     ContextMenuInstaller.SetDeskEditPath(command.Value);
                     Report("Путь к DeskEdit сохранён.", command.Value);
@@ -75,6 +82,64 @@ namespace FolderTools.App
             }
 
             ShowInfo(text);
+        }
+
+        private static int RunSettings()
+        {
+            using (var form = new SettingsForm())
+            {
+                form.ShowDialog();
+            }
+
+            return 0;
+        }
+
+        /// <summary>
+        /// Routes one selected item to the folder behind the chosen destination.
+        ///
+        /// The shell runs the verb once per selected item, so each invocation carries a
+        /// single path. Nothing is shown on success: the file simply appears in the
+        /// target folder, which is the whole point of the menu item.
+        /// </summary>
+        private static int RunTransfer(TransferAction action, ParsedCommand command)
+        {
+            if (string.IsNullOrWhiteSpace(command.Folder))
+            {
+                ShowError("Не указан получатель.");
+                return 2;
+            }
+
+            if (command.Items.Count == 0)
+            {
+                ShowError("Не выбраны файлы или папки.");
+                return 2;
+            }
+
+            FolderToolsSettings settings = ContextMenuInstaller.LoadSettings();
+            Destination? destination = settings.Destinations
+                .FirstOrDefault(d => string.Equals(d.Id, command.Folder, StringComparison.OrdinalIgnoreCase));
+
+            if (destination == null || string.IsNullOrWhiteSpace(destination.Path))
+            {
+                ShowError(
+                    "Папка назначения не найдена в настройках.\n\n" +
+                    "Откройте «FolderTools → Настройки…» и проверьте список папок.");
+                return 3;
+            }
+
+            var service = new TransferService();
+            TransferResult result = service.Transfer(action, destination.Path, command.Items);
+
+            if (result.HasErrors)
+            {
+                string verb = action == TransferAction.Copy ? "скопировать" : "переместить";
+                ShowError(
+                    "Не удалось " + verb + " часть объектов в «" + destination.DisplayName + "»:\n\n" +
+                    string.Join("\n", result.Errors));
+                return 4;
+            }
+
+            return 0;
         }
 
         private static int RunNomedia(string? folder)

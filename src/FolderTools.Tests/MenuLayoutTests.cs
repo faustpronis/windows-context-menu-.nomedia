@@ -56,10 +56,15 @@ namespace FolderTools.Tests
                 .Select(e => e.Value)
                 .ToList();
 
-            // Two verbs, once per target and once in the shared store.
-            Assert.Equal(8, commands.Count);
+            // The settings verb opens a window and takes no folder argument.
+            var folderCommands = commands.Where(c => !c.EndsWith(" settings")).ToList();
+
+            // Three verbs (nomedia, deskedit, settings), once per target and once in
+            // the shared store.
+            Assert.Equal(12, commands.Count);
             Assert.All(commands, c => Assert.StartsWith("\"" + Exe + "\"", c));
-            Assert.All(commands, c => Assert.EndsWith("\"%V\"", c));
+            Assert.All(folderCommands, c => Assert.EndsWith("\"%V\"", c));
+            Assert.Equal(4, commands.Count - folderCommands.Count);
             Assert.Contains(commands, c => c.Contains(" nomedia "));
             Assert.Contains(commands, c => c.Contains(" deskedit "));
         }

@@ -39,12 +39,22 @@ namespace FolderTools.Core
         /// <summary>Shared verb store referenced by the <c>ExtendedSubCommandsKey</c> value.</summary>
         public const string VerbStore = "FolderTools.Menu";
 
-        /// <summary>Shell objects the menu is attached to.</summary>
+        /// <summary>Shell objects the folder menu is attached to.</summary>
         public static readonly string[] Targets =
         {
             @"Directory\Background", // empty space inside a folder
             @"Directory",            // a folder icon
             @"Drive"                 // a drive root
+        };
+
+        /// <summary>
+        /// Shell objects the copy/move verbs are attached to. "*" covers every file
+        /// type, so a new verb does not have to be registered per extension.
+        /// </summary>
+        public static readonly string[] FileTargets =
+        {
+            @"*",
+            @"Directory"
         };
 
         public static IReadOnlyList<RegistryEntry> Build(string exePath)
@@ -78,12 +88,24 @@ namespace FolderTools.Core
             return "\"" + exePath + "\" " + verb + " \"%V\"";
         }
 
+        /// <summary>
+        /// Command for a verb invoked on a file. The shell runs a legacy verb once per
+        /// selected item, so %1 always names one file and routing by extension stays
+        /// exact even for a large mixed selection.
+        /// </summary>
+        public static string BuildFilesCommand(string exePath, string verb, string argument)
+        {
+            return "\"" + exePath + "\" " + verb + " \"" + argument + "\" \"%1\"";
+        }
+
         private static void AddVerbs(List<RegistryEntry> entries, string shellPath, string exePath)
         {
             entries.Add(new RegistryEntry(shellPath + @"\01nomedia", "MUIVerb", "Создать .nomedia"));
             entries.Add(new RegistryEntry(shellPath + @"\01nomedia\command", null, BuildCommand(exePath, "nomedia")));
             entries.Add(new RegistryEntry(shellPath + @"\02deskedit", "MUIVerb", "desktop.ini (DeskEdit)"));
             entries.Add(new RegistryEntry(shellPath + @"\02deskedit\command", null, BuildCommand(exePath, "deskedit")));
+            entries.Add(new RegistryEntry(shellPath + @"\90settings", "MUIVerb", "Настройки…"));
+            entries.Add(new RegistryEntry(shellPath + @"\90settings\command", null, "\"" + exePath + "\" settings"));
         }
     }
 }

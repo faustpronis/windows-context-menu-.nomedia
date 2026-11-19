@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace FolderTools.Core
 {
@@ -10,6 +11,9 @@ namespace FolderTools.Core
         Install,
         Uninstall,
         SetDeskEdit,
+        Settings,
+        CopyTo,
+        MoveTo,
         Version,
         Help,
         Unknown
@@ -18,20 +22,24 @@ namespace FolderTools.Core
     /// <summary>Result of parsing the command line: a command plus its target folder.</summary>
     public sealed class ParsedCommand
     {
-        public ParsedCommand(CommandKind kind, string? folder, string? value)
+        public ParsedCommand(CommandKind kind, string? folder, string? value, IReadOnlyList<string>? items = null)
         {
             Kind = kind;
             Folder = folder;
             Value = value;
+            Items = items ?? Array.Empty<string>();
         }
 
         public CommandKind Kind { get; }
 
-        /// <summary>Target folder for Nomedia / Deskedit commands.</summary>
+        /// <summary>Target folder for Nomedia / Deskedit, or the destination id for CopyTo / MoveTo.</summary>
         public string? Folder { get; }
 
         /// <summary>Extra payload, e.g. the editor path for SetDeskEdit.</summary>
         public string? Value { get; }
+
+        /// <summary>Selected items for CopyTo / MoveTo.</summary>
+        public IReadOnlyList<string> Items { get; }
     }
 
     /// <summary>
@@ -56,6 +64,22 @@ namespace FolderTools.Core
                     return new ParsedCommand(CommandKind.Nomedia, first, null);
                 case "deskedit":
                     return new ParsedCommand(CommandKind.Deskedit, first, null);
+                case "copyto":
+                case "moveto":
+                    // Registered as "copyto <destination-id> %1": the shell runs the verb
+                    // once per selected item, but accepting the rest of the arguments
+                    // keeps a manual "copyto <id> a.txt b.txt" invocation working too.
+                    IReadOnlyList<string> items = args.Count > 2
+                        ? args.Skip(2).ToList()
+                        : Array.Empty<string>();
+                    return new ParsedCommand(
+                        verb.Equals("copyto", StringComparison.OrdinalIgnoreCase) ? CommandKind.CopyTo : CommandKind.MoveTo,
+                        first,
+                        null,
+                        items);
+                case "settings":
+                case "config":
+                    return new ParsedCommand(CommandKind.Settings, null, null);
                 case "install":
                 case "-i":
                 case "/i":
@@ -100,11 +124,12 @@ namespace FolderTools.Core
             "FolderTools — инструменты для текущей папки.\n" +
             "\n" +
             "Использование:\n" +
-            "  FolderTools.exe -i, --install           Добавить пункт в контекстное меню папки\n" +
+            "  FolderTools.exe settings                  Открыть настройки\n" +
+            "  FolderTools.exe -i, --install            Добавить пункт в контекстное меню папки\n" +
             "  FolderTools.exe -r, -remove, --uninstall Удалить пункт из контекстного меню\n" +
-            "  FolderTools.exe nomedia \"<папка>\"       Создать или обновить .nomedia\n" +
-            "  FolderTools.exe deskedit \"<папка>\"       Открыть desktop.ini в DeskEdit\n" +
-            "  FolderTools.exe set-deskedit \"<путь>\"    Запомнить путь к DeskEdit.exe\n" +
+            "  FolderTools.exe nomedia \"<папка>\"        Создать или обновить .nomedia\n" +
+            "  FolderTools.exe deskedit \"<папка>\"        Открыть desktop.ini в DeskEdit\n" +
+            "  FolderTools.exe set-deskedit \"<путь>\"     Запомнить путь к DeskEdit.exe\n" +
             "  FolderTools.exe -v, --version            Показать версию\n";
     }
 }

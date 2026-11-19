@@ -20,21 +20,57 @@ namespace FolderTools.App
             get { return ProductInfo.ExecutablePath; }
         }
 
+        /// <summary>Settings file next to the exe, so it travels with the program.</summary>
+        public static string SettingsPath
+        {
+            get { return SettingsStore.DefaultPath(AppDomain.CurrentDomain.BaseDirectory); }
+        }
+
+        public static FolderToolsSettings LoadSettings()
+        {
+            return SettingsStore.Load(SettingsPath);
+        }
+
+        public static void SaveSettings(FolderToolsSettings settings)
+        {
+            SettingsStore.Save(SettingsPath, settings);
+            RefreshMenu();
+        }
+
         public static void Install()
         {
             string exe = ExecutablePath;
 
             foreach (RegistryEntry entry in MenuLayout.Build(exe))
             {
-                using (RegistryKey key = Registry.CurrentUser.CreateSubKey(entry.KeyPath))
-                {
-                    key.SetValue(entry.Name ?? string.Empty, entry.Value);
-                }
+                Write(entry);
             }
 
             using (RegistryKey config = Registry.CurrentUser.CreateSubKey(ConfigKey))
             {
                 config.SetValue("InstalledExe", exe);
+            }
+
+            RefreshMenu();
+        }
+
+        /// <summary>
+        /// Rewrites the destination verbs from the current settings. Called after every
+        /// settings change so the menu never disagrees with what the GUI shows.
+        /// </summary>
+        public static void RefreshMenu()
+        {
+            string exe = ExecutablePath;
+            foreach (string target in MenuLayout.FileTargets)
+            {
+                string shell = MenuLayout.ClassesRoot + "\\" + target + @"\shell";
+                Registry.CurrentUser.DeleteSubKeyTree(shell + "\\" + DestinationMenuLayout.CopyRoot, false);
+                Registry.CurrentUser.DeleteSubKeyTree(shell + "\\" + DestinationMenuLayout.MoveRoot, false);
+            }
+
+            foreach (RegistryEntry entry in DestinationMenuLayout.Build(exe, LoadSettings()))
+            {
+                Write(entry);
             }
         }
 
@@ -46,8 +82,23 @@ namespace FolderTools.App
                     MenuLayout.ClassesRoot + "\\" + target + @"\shell\" + MenuLayout.MenuKey, false);
             }
 
+            foreach (string target in MenuLayout.FileTargets)
+            {
+                string shell = MenuLayout.ClassesRoot + "\\" + target + @"\shell";
+                Registry.CurrentUser.DeleteSubKeyTree(shell + "\\" + DestinationMenuLayout.CopyRoot, false);
+                Registry.CurrentUser.DeleteSubKeyTree(shell + "\\" + DestinationMenuLayout.MoveRoot, false);
+            }
+
             Registry.CurrentUser.DeleteSubKeyTree(
                 MenuLayout.ClassesRoot + "\\" + MenuLayout.VerbStore, false);
+        }
+
+        private static void Write(RegistryEntry entry)
+        {
+            using (RegistryKey key = Registry.CurrentUser.CreateSubKey(entry.KeyPath))
+            {
+                key.SetValue(entry.Name ?? string.Empty, entry.Value);
+            }
         }
 
         public static void SetDeskEditPath(string? path)

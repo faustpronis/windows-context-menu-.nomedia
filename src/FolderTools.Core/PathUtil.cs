@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 
 namespace FolderTools.Core
 {
@@ -45,6 +46,71 @@ namespace FolderTools.Core
             }
 
             return value + "\\";
+        }
+
+        /// <summary>
+        /// File or folder name without its directory. Both separators are honoured on
+        /// every platform, because the shell hands over Windows paths while tests and
+        /// tooling may run elsewhere, where Path.GetFileName only splits on '/'.
+        /// </summary>
+        public static string GetLeafName(string? path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return string.Empty;
+            }
+
+            string value = path!.Trim().Trim('"').TrimEnd('\\', '/');
+            int separator = value.LastIndexOfAny(new[] { '\\', '/' });
+            return separator >= 0 ? value.Substring(separator + 1) : value;
+        }
+
+        /// <summary>Directory part of a path, or an empty string when there is none.</summary>
+        public static string GetDirectoryName(string? path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return string.Empty;
+            }
+
+            string value = path!.Trim().Trim('"').TrimEnd('\\', '/');
+            int separator = value.LastIndexOfAny(new[] { '\\', '/' });
+
+            // Keep "D:\" intact: the separator at index 2 belongs to the drive root.
+            if (separator < 0)
+            {
+                return string.Empty;
+            }
+
+            if (separator == 2 && value.Length > 1 && value[1] == ':')
+            {
+                return value.Substring(0, 3);
+            }
+
+            return value.Substring(0, separator);
+        }
+
+        /// <summary>Joins a folder and a leaf name with a single backslash.</summary>
+        public static string Combine(string folder, string name)
+        {
+            string trimmed = (folder ?? string.Empty).TrimEnd('\\', '/');
+            return trimmed + "\\" + name;
+        }
+
+        /// <summary>
+        /// Converts a logical Windows-style path to the separator the running platform
+        /// uses for file IO. On Windows this is a no-op; elsewhere it lets the same code
+        /// path be exercised by tests and tooling, where '\' is a legal file name
+        /// character rather than a separator.
+        /// </summary>
+        public static string ToNative(string path)
+        {
+            if (string.IsNullOrEmpty(path) || Path.DirectorySeparatorChar == '\\')
+            {
+                return path;
+            }
+
+            return path.Replace('\\', Path.DirectorySeparatorChar);
         }
     }
 }
