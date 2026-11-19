@@ -2,7 +2,10 @@
 
 ## Репозиторий
 
-- GitHub: `faustpronis/windows-context-menu-.nomedia` (public). Работа идёт в `main`.
+- GitHub: `faustpronis/windows-context-menu-.nomedia` (public). Работа идёт в `main`,
+  и `main` — ветка по умолчанию. Однажды дефолтной осталась ветка с работой после
+  merge PR, из-за чего главная страница показывала старый README: при слиянии PR
+  стоит проверять `default_branch` в API, а не только факт merge.
 - CI: `.github/workflows/build.yml` на `windows-latest` — build + test + артефакт
   `FolderTools-<версия>.zip`, релиз на тег `v*`.
 - Бинарники живут только в GitHub Releases (`FolderTools-<версия>.zip`); в репозитории
