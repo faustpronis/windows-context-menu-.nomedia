@@ -53,7 +53,7 @@ D:\SHARE\SYNCTHING\
 ## Скачать
 
 Готовый бинарник лежит в [Releases](https://github.com/faustpronis/windows-context-menu-.nomedia/releases/latest):
-архив `FolderTools-<версия>.zip`. Текущая версия — **0.2.0**.
+архив `FolderTools-<версия>.zip`. Текущая версия — **0.3.0**.
 
 ## Установка
 
@@ -182,7 +182,7 @@ dotnet test src/FolderTools.Tests/FolderTools.Tests.csproj
 Иконка приложения генерируется скриптом `tools/make_icon.py` в `assets/app.ico`.
 
 CI (GitHub Actions, `.github/workflows/build.yml`) собирает проект и прогоняет тесты.
-При пуше тега вида `v0.2.0` версия из тега подставляется в сборку, проверяется,
+При пуше тега вида `v0.3.0` версия из тега подставляется в сборку, проверяется,
 что она попала в exe, и публикуется релиз с архивом `FolderTools-<версия>.zip`.
 При обычном пуше в `main` тот же архив лежит в артефактах прогона.
 
