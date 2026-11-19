@@ -1,5 +1,7 @@
 # FolderTools
 
+[![release](https://img.shields.io/github/v/release/faustpronis/windows-context-menu-.nomedia?display_name=tag&sort=semver)](https://github.com/faustpronis/windows-context-menu-.nomedia/releases/latest)
+
 Небольшая утилита для Windows, которая добавляет в контекстное меню папки пункт
 **FolderTools** с подпунктами:
 
@@ -33,7 +35,7 @@ D:\SHARE\SYNCTHING\
 
 ## Скачать
 
-Готовый бинарник лежит в [Releases](https://github.com/faustpronis/windows-context-menu-.nomedia/releases):
+Готовый бинарник лежит в [Releases](https://github.com/faustpronis/windows-context-menu-.nomedia/releases/latest):
 архив `FolderTools-<версия>.zip`. Текущая версия — **0.1.0**.
 
 ## Установка
