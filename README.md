@@ -53,7 +53,7 @@ D:\SHARE\SYNCTHING\
 ## Скачать
 
 Готовый бинарник лежит в [Releases](https://github.com/faustpronis/windows-context-menu-.nomedia/releases/latest):
-архив `FolderTools-<версия>.zip`. Текущая версия — **0.8.0**.
+архив `FolderTools-<версия>.zip`. Текущая версия — **0.9.0**.
 
 ## Установка
 
@@ -71,6 +71,12 @@ D:\SHARE\SYNCTHING\
 `FolderTools.exe.config` — конфигурация CLR для .NET Framework 4.8. Загрузчик
 читает её до запуска приложения, поэтому перенести её в `FolderTools_dlls` нельзя;
 обычный .NET Framework также не поддерживает встраивание этого файла в exe.
+
+Если программа не запускается, откройте командную строку в папке установки и
+выполните `FolderTools.exe /debug`. Диагностический журнал создаётся в
+`%LOCALAPPDATA%\FolderTools\startup.log`; если папка профиля недоступна, используется
+временная папка Windows. Ключ `/debug` также фильтруется при обычном запуске, поэтому
+он не передаётся командам программы.
 
 Удаление — `FolderTools.exe -r` или `uninstall.bat`.
 
@@ -209,7 +215,7 @@ dotnet test src/FolderTools.Tests/FolderTools.Tests.csproj
 Иконка приложения генерируется скриптом `tools/make_icon.py` в `assets/app.ico`.
 
 CI (GitHub Actions, `.github/workflows/build.yml`) собирает проект и прогоняет тесты.
-При пуше тега вида `v0.8.0` версия из тега подставляется в сборку, проверяется,
+При пуше тега вида `v0.9.0` версия из тега подставляется в сборку, проверяется,
 что она попала в exe, и публикуется релиз с архивом `FolderTools-<версия>.zip`.
 При обычном пуше в `main` тот же архив лежит в артефактах прогона.
 
