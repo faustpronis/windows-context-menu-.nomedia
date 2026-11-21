@@ -5,7 +5,7 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <Deterministic>true</Deterministic>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
-    <Version>0.7.0</Version>
+    <Version>0.8.0</Version>
     <Company>FolderTools</Company>
     <Product>FolderTools</Product>
     <Copyright>FolderTools</Copyright>

@@ -6,6 +6,21 @@ namespace FolderTools.Core
     /// <summary>Normalises folder paths so two spellings of the same folder compare equal.</summary>
     public static class PathUtil
     {
+        /// <summary>
+        /// Explorer may pass a drive root as "M:". In Windows that spelling is
+        /// drive-relative, so make it an explicit root before checking or using it.
+        /// </summary>
+        public static string NormalizeDriveRoot(string? path)
+        {
+            string value = (path ?? string.Empty).Trim().Trim('"');
+            if (value.Length == 2 && char.IsLetter(value[0]) && value[1] == ':')
+            {
+                return value + "\\";
+            }
+
+            return value;
+        }
+
         /// <summary>Trims whitespace and surrounding quotes, collapses a trailing separator.</summary>
         public static string NormalizeForComparison(string? path)
         {

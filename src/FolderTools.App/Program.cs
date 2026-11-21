@@ -308,7 +308,7 @@ namespace FolderTools.App
 
         private static bool TryResolveFolder(string? folder, out string target)
         {
-            target = folder ?? string.Empty;
+            target = PathUtil.NormalizeDriveRoot(folder);
             if (string.IsNullOrWhiteSpace(target))
             {
                 ShowError("Не указана папка.\n\n" + CommandLine.HelpText);

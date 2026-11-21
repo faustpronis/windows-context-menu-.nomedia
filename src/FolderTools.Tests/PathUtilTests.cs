@@ -6,6 +6,16 @@ namespace FolderTools.Tests
     public class PathUtilTests
     {
         [Theory]
+        [InlineData("M:", @"M:\")]
+        [InlineData("  \"m:\"  ", @"m:\")]
+        [InlineData(@"M:\", @"M:\")]
+        [InlineData(@"M:\Folder", @"M:\Folder")]
+        public void NormalizeDriveRoot_MakesDriveRootExplicit(string input, string expected)
+        {
+            Assert.Equal(expected, PathUtil.NormalizeDriveRoot(input));
+        }
+
+        [Theory]
         [InlineData(@"D:\SHARE\SYNCTHING", @"d:\share\syncthing\")]
         [InlineData(@"D:\SHARE\SYNCTHING\", @"D:\SHARE\SYNCTHING")]
         [InlineData("  \"D:\\Share\\SyncThing\"  ", @"D:/SHARE/SYNCTHING")]
