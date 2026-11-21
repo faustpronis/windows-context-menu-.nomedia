@@ -38,7 +38,7 @@ namespace FolderTools.Tests
         }
 
         [Fact]
-        public void Build_CreatesCopyAndMoveRootsForFilesAndFolders()
+        public void Build_CreatesUnifiedFileRootAndFolderActions()
         {
             var settings = SettingsWith(
                 new Destination("d1", "Text", @"D:\Text", new[] { "*.txt" }),
@@ -46,8 +46,8 @@ namespace FolderTools.Tests
 
             var entries = DestinationMenuLayout.Build(Exe, settings);
 
-            Assert.Contains(entries, e => e.KeyPath == @"Software\Classes\*\shell\01copyto" && e.Name == "MUIVerb" && e.Value == "Копировать в");
-            Assert.Contains(entries, e => e.KeyPath == @"Software\Classes\*\shell\02moveto" && e.Name == "MUIVerb" && e.Value == "Переместить в");
+            Assert.Contains(entries, e => e.KeyPath == @"Software\Classes\*\shell\FolderTools\ExtendedSubCommandsKey\Shell\01copyto" && e.Name == "MUIVerb" && e.Value == "Копировать в");
+            Assert.Contains(entries, e => e.KeyPath == @"Software\Classes\*\shell\FolderTools\ExtendedSubCommandsKey\Shell\02moveto" && e.Name == "MUIVerb" && e.Value == "Переместить в");
             Assert.Contains(entries, e => e.KeyPath == @"Software\Classes\Directory\shell\01copyto");
             Assert.Contains(entries, e => e.KeyPath == @"Software\Classes\Directory\shell\02moveto");
         }
@@ -59,7 +59,7 @@ namespace FolderTools.Tests
 
             var entries = DestinationMenuLayout.Build(Exe, settings);
 
-            Assert.Contains(entries, e => e.KeyPath.StartsWith(@"Software\Classes\*\shell\01copyto"));
+            Assert.Contains(entries, e => e.KeyPath.StartsWith(@"Software\Classes\*\shell\FolderTools\ExtendedSubCommandsKey\Shell\01copyto"));
             Assert.DoesNotContain(entries, e => e.KeyPath.StartsWith(@"Software\Classes\Directory\shell\01copyto"));
         }
 
@@ -71,7 +71,7 @@ namespace FolderTools.Tests
             var entries = DestinationMenuLayout.Build(Exe, settings);
 
             Assert.Contains(entries, e => e.KeyPath.StartsWith(@"Software\Classes\Directory\shell\01copyto"));
-            Assert.DoesNotContain(entries, e => e.KeyPath.StartsWith(@"Software\Classes\*\shell\01copyto"));
+            Assert.DoesNotContain(entries, e => e.KeyPath.StartsWith(@"Software\Classes\*\shell\FolderTools\ExtendedSubCommandsKey\Shell\01copyto"));
         }
 
         [Theory]
@@ -108,7 +108,7 @@ namespace FolderTools.Tests
                 var entries = DestinationMenuLayout.Build(Exe, settings, baseDir);
 
                 Assert.Contains(entries, e =>
-                    e.KeyPath == @"Software\Classes\*\shell\01copyto\ExtendedSubCommandsKey\Shell\01"
+                    e.KeyPath == @"Software\Classes\*\shell\FolderTools\ExtendedSubCommandsKey\Shell\01copyto\ExtendedSubCommandsKey\Shell\01"
                     && e.Name == "Icon"
                     && e.Value == "\"" + icon + "\"");
             }
@@ -145,7 +145,11 @@ namespace FolderTools.Tests
         {
             var settings = SettingsWith(new Destination("d1", "Empty", @"D:\Empty", new string[0]));
 
-            Assert.Empty(DestinationMenuLayout.Build(Exe, settings));
+            var entries = DestinationMenuLayout.Build(Exe, settings);
+
+            Assert.Contains(entries, e => e.KeyPath == @"Software\Classes\*\shell\FolderTools");
+            Assert.Contains(entries, e => e.Value == "\"" + Exe + "\" settings");
+            Assert.DoesNotContain(entries, e => e.Value == "Копировать в" || e.Value == "Переместить в");
         }
 
         [Fact]
@@ -154,7 +158,7 @@ namespace FolderTools.Tests
             var settings = SettingsWith(new Destination("abc123", "Text", @"D:\Text", new[] { "*.txt" }));
 
             var entries = DestinationMenuLayout.Build(Exe, settings);
-            var command = entries.Single(e => e.KeyPath == @"Software\Classes\*\shell\01copyto\ExtendedSubCommandsKey\Shell\01\command");
+            var command = entries.Single(e => e.KeyPath == @"Software\Classes\*\shell\FolderTools\ExtendedSubCommandsKey\Shell\01copyto\ExtendedSubCommandsKey\Shell\01\command");
 
             Assert.Equal("\"" + Exe + "\" copyto \"abc123\" \"%1\"", command.Value);
         }
@@ -165,7 +169,7 @@ namespace FolderTools.Tests
             var settings = SettingsWith(new Destination("abc123", "Text", @"D:\Text", new[] { "*.txt" }));
 
             var entries = DestinationMenuLayout.Build(Exe, settings);
-            var command = entries.Single(e => e.KeyPath == @"Software\Classes\*\shell\02moveto\ExtendedSubCommandsKey\Shell\01\command");
+            var command = entries.Single(e => e.KeyPath == @"Software\Classes\*\shell\FolderTools\ExtendedSubCommandsKey\Shell\02moveto\ExtendedSubCommandsKey\Shell\01\command");
 
             Assert.Contains(" moveto ", command.Value);
         }
@@ -181,10 +185,10 @@ namespace FolderTools.Tests
 
             var entries = DestinationMenuLayout.Build(Exe, settings);
 
-            Assert.Contains(entries, e => e.KeyPath == @"Software\Classes\*\shell\01copyto\ExtendedSubCommandsKey\Shell\cat01" && e.Name == "MUIVerb" && e.Value == "Фото");
-            Assert.Contains(entries, e => e.KeyPath == @"Software\Classes\*\shell\01copyto\ExtendedSubCommandsKey\Shell\cat01\ExtendedSubCommandsKey\Shell\01\command");
-            Assert.Contains(entries, e => e.KeyPath == @"Software\Classes\*\shell\01copyto\ExtendedSubCommandsKey\Shell\cat01\ExtendedSubCommandsKey\Shell\02\command");
-            Assert.Contains(entries, e => e.KeyPath == @"Software\Classes\*\shell\01copyto\ExtendedSubCommandsKey\Shell\01\command");
+            Assert.Contains(entries, e => e.KeyPath == @"Software\Classes\*\shell\FolderTools\ExtendedSubCommandsKey\Shell\01copyto\ExtendedSubCommandsKey\Shell\cat01" && e.Name == "MUIVerb" && e.Value == "Фото");
+            Assert.Contains(entries, e => e.KeyPath == @"Software\Classes\*\shell\FolderTools\ExtendedSubCommandsKey\Shell\01copyto\ExtendedSubCommandsKey\Shell\cat01\ExtendedSubCommandsKey\Shell\01\command");
+            Assert.Contains(entries, e => e.KeyPath == @"Software\Classes\*\shell\FolderTools\ExtendedSubCommandsKey\Shell\01copyto\ExtendedSubCommandsKey\Shell\cat01\ExtendedSubCommandsKey\Shell\02\command");
+            Assert.Contains(entries, e => e.KeyPath == @"Software\Classes\*\shell\FolderTools\ExtendedSubCommandsKey\Shell\01copyto\ExtendedSubCommandsKey\Shell\01\command");
         }
 
         [Fact]
@@ -196,7 +200,7 @@ namespace FolderTools.Tests
             settings.Destinations.Add(new Destination("d2", "Текст", @"D:\Text", new[] { "*.txt" }));
 
             var entries = DestinationMenuLayout.Build(Exe, settings);
-            var topLevel = entries.Single(e => e.KeyPath == @"Software\Classes\*\shell\01copyto\ExtendedSubCommandsKey\Shell\01" && e.Name == "MUIVerb");
+            var topLevel = entries.Single(e => e.KeyPath == @"Software\Classes\*\shell\FolderTools\ExtendedSubCommandsKey\Shell\01copyto\ExtendedSubCommandsKey\Shell\01" && e.Name == "MUIVerb");
 
             Assert.Equal("Текст", topLevel.Value);
         }
@@ -246,27 +250,38 @@ namespace FolderTools.Tests
         }
 
         [Fact]
-        public void Build_RootCarriesFilterSoEmptySubmenuIsHidden()
+        public void Build_FileActionRootCarriesFilterSoEmptySubmenuIsHidden()
         {
             var settings = SettingsWith(new Destination("d1", "Text", @"D:\Text", new[] { "*.txt" }));
 
             var entries = DestinationMenuLayout.Build(Exe, settings);
-            var root = entries.Single(e => e.KeyPath == @"Software\Classes\*\shell\01copyto" && e.Name == "AppliesTo");
+            var root = entries.Single(e => e.KeyPath == @"Software\Classes\*\shell\FolderTools\ExtendedSubCommandsKey\Shell\01copyto" && e.Name == "AppliesTo");
 
             Assert.Equal("System.FileName:~\"*.txt\"", root.Value);
         }
 
         [Fact]
-        public void Build_RootFilterUnionsEveryDestination()
+        public void Build_FileActionRootFilterUnionsEveryDestination()
         {
             var settings = SettingsWith(
                 new Destination("d1", "Text", @"D:\Text", new[] { "*.txt" }),
                 new Destination("d2", "Images", @"D:\Images", new[] { "*.jpg" }));
 
             var entries = DestinationMenuLayout.Build(Exe, settings);
-            var root = entries.Single(e => e.KeyPath == @"Software\Classes\*\shell\01copyto" && e.Name == "AppliesTo");
+            var root = entries.Single(e => e.KeyPath == @"Software\Classes\*\shell\FolderTools\ExtendedSubCommandsKey\Shell\01copyto" && e.Name == "AppliesTo");
 
             Assert.Equal("(System.FileName:~\"*.txt\" OR System.FileName:~\"*.jpg\")", root.Value);
+        }
+
+        [Fact]
+        public void Build_FileRootAlwaysHasSettingsAndApplicationIcon()
+        {
+            var entries = DestinationMenuLayout.Build(Exe, new FolderToolsSettings());
+            string root = @"Software\Classes\*\shell\FolderTools";
+
+            Assert.Contains(entries, e => e.KeyPath == root && e.Name == "MUIVerb" && e.Value == "FolderTools");
+            Assert.Contains(entries, e => e.KeyPath == root && e.Name == "Icon" && e.Value == "\"" + Exe + "\",0");
+            Assert.Contains(entries, e => e.KeyPath.EndsWith(@"\90settings\command") && e.Value == "\"" + Exe + "\" settings");
         }
 
         [Fact]

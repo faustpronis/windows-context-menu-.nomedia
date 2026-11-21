@@ -24,6 +24,7 @@ namespace FolderTools.Core
     /// </summary>
     public static class DestinationMenuLayout
     {
+        public const string FileRoot = "FolderTools";
         public const string CopyRoot = "01copyto";
         public const string MoveRoot = "02moveto";
 
@@ -62,22 +63,42 @@ namespace FolderTools.Core
 
             foreach (string target in MenuLayout.FileTargets)
             {
+                // File actions share one branded root in the file context menu. Folder
+                // icon actions retain their existing standalone Copy/Move roots.
+                bool isFiles = target == "*";
                 List<Destination> applicable = destinations
                     .Where(d => AppliesToTarget(d, target))
                     .ToList();
+
+                if (applicable.Count == 0 && !isFiles)
+                {
+                    continue;
+                }
+
+                string shell = MenuLayout.ClassesRoot + "\\" + target + @"\shell";
+                string root = isFiles ? shell + "\\" + FileRoot : shell;
+
+                if (isFiles)
+                {
+                    entries.Add(new RegistryEntry(root, "MUIVerb", "FolderTools"));
+                    entries.Add(new RegistryEntry(root, "Icon", "\"" + exePath + "\",0"));
+                    entries.Add(new RegistryEntry(root, "ExtendedSubCommandsKey", "FolderTools.FileTools"));
+                    entries.Add(new RegistryEntry(root + @"\ExtendedSubCommandsKey\Shell\90settings", "MUIVerb", "Настройки…"));
+                    entries.Add(new RegistryEntry(root + @"\ExtendedSubCommandsKey\Shell\90settings\command", null, "\"" + exePath + "\" settings"));
+                    entries.Add(new RegistryEntry(MenuLayout.ClassesRoot + @"\FolderTools.FileTools\shell\90settings", "MUIVerb", "Настройки…"));
+                    entries.Add(new RegistryEntry(MenuLayout.ClassesRoot + @"\FolderTools.FileTools\shell\90settings\command", null, "\"" + exePath + "\" settings"));
+                }
 
                 if (applicable.Count == 0)
                 {
                     continue;
                 }
 
-                string shell = MenuLayout.ClassesRoot + "\\" + target + @"\shell";
-
                 AddSubmenu(
                     entries,
-                    shell + "\\" + CopyRoot,
+                    isFiles ? root + @"\ExtendedSubCommandsKey\Shell\01copyto" : shell + "\\" + CopyRoot,
                     "Копировать в",
-                    StoreFor(target, TransferAction.Copy),
+                    isFiles ? "FolderTools.FileTools.Copy" : StoreFor(target, TransferAction.Copy),
                     applicable,
                     TransferAction.Copy,
                     exePath,
@@ -86,11 +107,16 @@ namespace FolderTools.Core
                     allowCategories: true,
                     baseDirectory);
 
+                if (isFiles)
+                {
+                    AddSubmenu(entries, MenuLayout.ClassesRoot + @"\FolderTools.FileTools\shell\01copyto", "Копировать в", "FolderTools.FileTools.Copy", applicable, TransferAction.Copy, exePath, target, settings, true, baseDirectory);
+                }
+
                 AddSubmenu(
                     entries,
-                    shell + "\\" + MoveRoot,
+                    isFiles ? root + @"\ExtendedSubCommandsKey\Shell\02moveto" : shell + "\\" + MoveRoot,
                     "Переместить в",
-                    StoreFor(target, TransferAction.Move),
+                    isFiles ? "FolderTools.FileTools.Move" : StoreFor(target, TransferAction.Move),
                     applicable,
                     TransferAction.Move,
                     exePath,
@@ -98,6 +124,11 @@ namespace FolderTools.Core
                     settings,
                     allowCategories: true,
                     baseDirectory);
+
+                if (isFiles)
+                {
+                    AddSubmenu(entries, MenuLayout.ClassesRoot + @"\FolderTools.FileTools\shell\02moveto", "Переместить в", "FolderTools.FileTools.Move", applicable, TransferAction.Move, exePath, target, settings, true, baseDirectory);
+                }
             }
 
             return entries;

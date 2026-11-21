@@ -69,6 +69,10 @@ namespace FolderTools.App
             foreach (string target in MenuLayout.FileTargets)
             {
                 string shell = MenuLayout.ClassesRoot + "\\" + target + @"\shell";
+                if (target == "*")
+                {
+                    Registry.CurrentUser.DeleteSubKeyTree(shell + "\\" + DestinationMenuLayout.FileRoot, false);
+                }
                 Registry.CurrentUser.DeleteSubKeyTree(shell + "\\" + DestinationMenuLayout.CopyRoot, false);
                 Registry.CurrentUser.DeleteSubKeyTree(shell + "\\" + DestinationMenuLayout.MoveRoot, false);
             }
@@ -99,6 +103,10 @@ namespace FolderTools.App
             foreach (string target in MenuLayout.FileTargets)
             {
                 string shell = MenuLayout.ClassesRoot + "\\" + target + @"\shell";
+                if (target == "*")
+                {
+                    Registry.CurrentUser.DeleteSubKeyTree(shell + "\\" + DestinationMenuLayout.FileRoot, false);
+                }
                 Registry.CurrentUser.DeleteSubKeyTree(shell + "\\" + DestinationMenuLayout.CopyRoot, false);
                 Registry.CurrentUser.DeleteSubKeyTree(shell + "\\" + DestinationMenuLayout.MoveRoot, false);
             }
