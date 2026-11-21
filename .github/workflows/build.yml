@@ -65,15 +65,32 @@ jobs:
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
           $bin = "src/FolderTools.App/bin/Release/net48"
           Copy-Item "$bin/FolderTools.exe"        $stage
-          # Include the full runtime dependency set (including SSH.NET) in the zip.
-          Copy-Item "$bin/*.dll"                  $stage
+          # Keep runtime dependencies out of the program folder; app.config enables
+          # CLR probing in this private subdirectory.
+          $dllStage = Join-Path $stage "FolderTools_dlls"
+          New-Item -ItemType Directory -Force -Path $dllStage | Out-Null
+          Copy-Item "$bin/*.dll"                  $dllStage
           Copy-Item "$bin/FolderTools.exe.config" $stage
           Copy-Item "installer/install.bat"       $stage
           Copy-Item "installer/uninstall.bat"     $stage
           Copy-Item "README.md"                   $stage
+          [xml]$appConfig = Get-Content (Join-Path $stage "FolderTools.exe.config")
+          $probing = $appConfig.SelectSingleNode("/configuration/runtime/probing")
+          if (-not $probing -or $probing.GetAttribute("privatePath") -notmatch '(^|;)FolderTools_dlls($|;)') {
+            throw "FolderTools.exe.config must probe FolderTools_dlls"
+          }
+          foreach ($requiredDll in @("FolderTools.Core.dll", "Renci.SshNet.dll", "System.Security.Cryptography.ProtectedData.dll")) {
+            if (-not (Test-Path (Join-Path $dllStage $requiredDll))) {
+              throw "Required runtime dependency missing from FolderTools_dlls: $requiredDll"
+            }
+          }
+          if (Get-ChildItem $stage -Filter "*.dll") {
+            throw "DLL files must not be placed beside FolderTools.exe"
+          }
           $zip = "FolderTools-$version.zip"
           Compress-Archive -Path $stage -DestinationPath $zip -Force
           Get-ChildItem $stage | Select-Object Name, Length
+          Get-ChildItem $dllStage | Select-Object Name, Length
           "ZIP=$zip" >> $env:GITHUB_ENV
           "VERSION=$version" >> $env:GITHUB_ENV
 
