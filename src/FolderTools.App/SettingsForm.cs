@@ -28,6 +28,7 @@ namespace FolderTools.App
         private readonly TextBox _iconPath = new TextBox();
         private readonly PictureBox _iconPreview = new PictureBox();
         private readonly TextBox _deskEditPath = new TextBox();
+        private readonly Button _browseFolder = new Button();
         private readonly CheckBox _showSuccess = new CheckBox();
         private readonly Label _hint = new Label();
         private bool _loading;
@@ -50,6 +51,45 @@ namespace FolderTools.App
             BuildLayout();
             LoadDestinations();
             LoadMisc();
+            NotifyMissingSftpCredentials();
+        }
+
+        private void NotifyMissingSftpCredentials()
+        {
+            Destination[] sftpDestinations = _working.Destinations
+                .Where(destination => destination.Type == DestinationType.Sftp)
+                .ToArray();
+            if (sftpDestinations.Length == 0)
+            {
+                return;
+            }
+
+            int missing = 0;
+            foreach (Destination destination in sftpDestinations)
+            {
+                try
+                {
+                    if (SftpCredentialStore.Get(destination.Id).State != SftpCredentialState.Available)
+                    {
+                        missing++;
+                    }
+                }
+                catch (Exception)
+                {
+                    missing++;
+                }
+            }
+
+            if (missing > 0)
+            {
+                MessageBox.Show(
+                    this,
+                    missing + " SFTP-подключений требуют пароля для текущей учётной записи Windows. " +
+                    "После переноса программы на новый компьютер или смены учётной записи введите пароли заново.",
+                    "Обновите пароли SFTP",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
         }
 
         private static Icon? LoadAppIcon()
@@ -123,6 +163,8 @@ namespace FolderTools.App
                 Padding = new Padding(0, 2, 0, 2)
             };
             listButtons.Controls.Add(MakeButton("Добавить", AddDestination));
+            listButtons.Controls.Add(MakeButton("Добавить SFTP", AddSftpDestination));
+            listButtons.Controls.Add(MakeButton("Настроить SFTP…", EditSftpDestination));
             listButtons.Controls.Add(MakeButton("Удалить", RemoveDestination));
             listButtons.Controls.Add(MakeButton("Вверх", () => MoveDestination(-1)));
             listButtons.Controls.Add(MakeButton("Вниз", () => MoveDestination(1)));
@@ -152,7 +194,11 @@ namespace FolderTools.App
             _path.Dock = DockStyle.Fill;
             _path.TextChanged += (s, e) => UpdateSelected(d => d.Path = _path.Text);
             pathRow.Controls.Add(_path, 0, 0);
-            pathRow.Controls.Add(MakeButton("Обзор…", BrowseFolder), 1, 0);
+            _browseFolder.Text = "Обзор…";
+            _browseFolder.Width = 86;
+            _browseFolder.Height = 28;
+            _browseFolder.Click += (s, e) => BrowseFolder();
+            pathRow.Controls.Add(_browseFolder, 1, 0);
             details.Controls.Add(pathRow, 1, 1);
 
             details.Controls.Add(new Label { Text = "Категория:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 2);
@@ -517,6 +563,8 @@ namespace FolderTools.App
             {
                 _name.Text = string.Empty;
                 _path.Text = string.Empty;
+                _path.ReadOnly = false;
+                _browseFolder.Enabled = true;
                 ShowDestinationIcon(null);
                 _patterns.Items.Clear();
                 _loading = false;
@@ -526,7 +574,12 @@ namespace FolderTools.App
             }
 
             _name.Text = destination.Name;
-            _path.Text = destination.Path;
+            bool isSftp = destination.Type == DestinationType.Sftp;
+            _path.ReadOnly = isSftp;
+            _browseFolder.Enabled = !isSftp;
+            _path.Text = isSftp
+                ? "sftp://" + (destination.SftpHost ?? string.Empty) + ":" + destination.SftpPort + (destination.SftpRemotePath ?? string.Empty)
+                : destination.Path;
             ShowDestinationIcon(destination.IconPath);
             _patterns.Items.Clear();
             foreach (string pattern in destination.Patterns)
@@ -619,6 +672,52 @@ namespace FolderTools.App
             _destinations.SelectedIndex = _working.Destinations.Count - 1;
             _name.Focus();
             _name.SelectAll();
+        }
+
+        private void AddSftpDestination()
+        {
+            var destination = new Destination
+            {
+                Name = "Новая SFTP-папка",
+                Path = string.Empty,
+                Type = DestinationType.Sftp,
+                SftpPort = 22
+            };
+
+            using (var form = new SftpDestinationForm(destination))
+            {
+                if (form.ShowDialog(this) != DialogResult.OK)
+                {
+                    return;
+                }
+            }
+
+            _working.Destinations.Add(destination);
+            LoadDestinations();
+            _destinations.SelectedIndex = _working.Destinations.Count - 1;
+        }
+
+        private void EditSftpDestination()
+        {
+            Destination? destination = Selected;
+            if (destination == null)
+            {
+                return;
+            }
+
+            if (destination.Type != DestinationType.Sftp)
+            {
+                MessageBox.Show(this, "Сначала выберите SFTP-папку в списке.", "FolderTools", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            using (var form = new SftpDestinationForm(destination))
+            {
+                if (form.ShowDialog(this) == DialogResult.OK)
+                {
+                    LoadDestinations();
+                }
+            }
         }
 
         private void RemoveDestination()
@@ -800,7 +899,7 @@ namespace FolderTools.App
         {
             foreach (Destination destination in _working.Destinations)
             {
-                if (string.IsNullOrWhiteSpace(destination.Path))
+                if (string.IsNullOrWhiteSpace(destination.EffectivePath))
                 {
                     MessageBox.Show(
                         "У папки «" + destination.DisplayName + "» не указан путь.",

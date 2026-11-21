@@ -33,6 +33,32 @@ namespace FolderTools.Tests
         }
 
         [Fact]
+        public void RoundTrip_KeepsSftpDestinationButNeverContainsCredentials()
+        {
+            var settings = new FolderToolsSettings();
+            settings.Destinations.Add(new Destination("remote-1", "Backup", string.Empty, new[] { "*.zip" })
+            {
+                Type = DestinationType.Sftp,
+                SftpHost = "sftp.example.test",
+                SftpPort = 2222,
+                SftpRemotePath = "/uploads/backups",
+                SftpHostKeyFingerprint = "SHA256:known-host-key"
+            });
+
+            string json = SettingsStore.ToJson(settings).ToJson();
+            FolderToolsSettings restored = SettingsStore.FromJson(JsonNode.Parse(json) as JsonObject);
+            Destination destination = Assert.Single(restored.Destinations);
+
+            Assert.Equal(DestinationType.Sftp, destination.Type);
+            Assert.Equal("sftp.example.test", destination.SftpHost);
+            Assert.Equal(2222, destination.SftpPort);
+            Assert.Equal("/uploads/backups", destination.EffectivePath);
+            Assert.Equal("SHA256:known-host-key", destination.SftpHostKeyFingerprint);
+            Assert.DoesNotContain("password", json, System.StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("username", json, System.StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
         public void Json_EscapesWindowsPaths()
         {
             var settings = new FolderToolsSettings();

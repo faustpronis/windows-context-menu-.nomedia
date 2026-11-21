@@ -11,6 +11,12 @@ namespace FolderTools.Core
         Move
     }
 
+    public enum DestinationType
+    {
+        Local,
+        Sftp
+    }
+
     /// <summary>
     /// One destination folder plus the extension patterns that route files to it.
     /// An entry with no patterns never appears in the menu, which is how a folder
@@ -42,6 +48,20 @@ namespace FolderTools.Core
 
         public string Path { get; set; }
 
+        public DestinationType Type { get; set; }
+
+        public string? SftpHost { get; set; }
+
+        public int SftpPort { get; set; } = 22;
+
+        public string? SftpRemotePath { get; set; }
+
+        public string? SftpHostKeyFingerprint { get; set; }
+
+        public string EffectivePath => Type == DestinationType.Sftp
+            ? (SftpRemotePath ?? string.Empty)
+            : (Path ?? string.Empty);
+
         /// <summary>Extension patterns such as "*.txt" or "photo!.jpg".</summary>
         public List<string> Patterns { get; set; }
 
@@ -67,7 +87,7 @@ namespace FolderTools.Core
                     return Name.Trim();
                 }
 
-                string trimmed = (Path ?? string.Empty).TrimEnd('\\', '/');
+                string trimmed = EffectivePath.TrimEnd('\\', '/');
                 int slash = trimmed.LastIndexOfAny(new[] { '\\', '/' });
                 return slash >= 0 && slash < trimmed.Length - 1 ? trimmed.Substring(slash + 1) : trimmed;
             }
@@ -92,7 +112,12 @@ namespace FolderTools.Core
             return new Destination(Id, Name, Path, Patterns)
             {
                 Category = Category,
-                IconPath = IconPath
+                IconPath = IconPath,
+                Type = Type,
+                SftpHost = SftpHost,
+                SftpPort = SftpPort,
+                SftpRemotePath = SftpRemotePath,
+                SftpHostKeyFingerprint = SftpHostKeyFingerprint
             };
         }
     }
@@ -163,7 +188,7 @@ namespace FolderTools.Core
         public IReadOnlyList<Destination> EnabledDestinations()
         {
             return Destinations
-                .Where(d => d.IsEnabled && !string.IsNullOrWhiteSpace(d.Path))
+                .Where(d => d.IsEnabled && !string.IsNullOrWhiteSpace(d.EffectivePath))
                 .ToList();
         }
     }

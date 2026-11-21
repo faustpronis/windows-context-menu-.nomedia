@@ -22,7 +22,7 @@ namespace FolderTools.Core
             IReadOnlyList<string>? items,
             Func<string, bool>? isDirectory = null)
         {
-            if (destination == null || string.IsNullOrWhiteSpace(destination.Path))
+            if (destination == null || string.IsNullOrWhiteSpace(destination.EffectivePath))
             {
                 return "Папка назначения не найдена в настройках.\n\n" +
                        "Откройте «FolderTools → Настройки…» и проверьте список папок.";

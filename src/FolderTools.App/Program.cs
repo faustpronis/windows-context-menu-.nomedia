@@ -133,6 +133,11 @@ namespace FolderTools.App
                 return 3;
             }
 
+            if (destination.Type == DestinationType.Sftp)
+            {
+                return RunSftpTransfer(action, destination, settings, command.Items);
+            }
+
             var service = new TransferService();
             TransferResult result = service.Transfer(action, destination.Path, command.Items);
 
@@ -146,6 +151,84 @@ namespace FolderTools.App
             }
 
             return 0;
+        }
+
+        private static int RunSftpTransfer(
+            TransferAction action,
+            Destination destination,
+            FolderToolsSettings settings,
+            System.Collections.Generic.IReadOnlyList<string> items)
+        {
+            SftpCredentialLookup credentials;
+            try
+            {
+                credentials = SftpCredentialStore.Get(destination.Id);
+            }
+            catch (Exception ex)
+            {
+                ShowError("Не удалось прочитать защищённые учётные данные SFTP:\n" + ex.Message);
+                return 5;
+            }
+
+            if (credentials.State != SftpCredentialState.Available)
+            {
+                string reason = credentials.State == SftpCredentialState.NeedsReentry
+                    ? "Пароль SFTP не удалось расшифровать после смены компьютера или учётной записи Windows."
+                    : "Для этой учётной записи Windows пароль SFTP ещё не сохранён.";
+                ShowError(reason + "\n\nОткройте FolderTools → Настройки…, выберите SFTP-папку и введите пароль заново.");
+                return 5;
+            }
+
+            try
+            {
+                var service = new SftpTransferService();
+                SftpTransferResult result = service.Transfer(
+                    destination,
+                    action,
+                    items,
+                    credentials.Username ?? string.Empty,
+                    credentials.Password ?? string.Empty,
+                    fingerprint => ConfirmAndRememberSftpHostKey(fingerprint, destination, settings));
+
+                if (result.HasErrors)
+                {
+                    string verb = action == TransferAction.Copy ? "отправить" : "переместить";
+                    ShowError("Не удалось " + verb + " часть объектов в «" + destination.DisplayName + "»:\n\n" +
+                              string.Join("\n", result.Errors));
+                    return 4;
+                }
+
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                ShowError("Ошибка SFTP-подключения к «" + destination.DisplayName + "»:\n\n" + ex.Message);
+                return 4;
+            }
+        }
+
+        private static bool ConfirmAndRememberSftpHostKey(
+            string fingerprint,
+            Destination destination,
+            FolderToolsSettings settings)
+        {
+            DialogResult answer = MessageBox.Show(
+                "У сервера ещё не сохранён SSH-ключ. Сверьте его fingerprint с администратором сервера.\n\n" +
+                "Сервер: " + destination.SftpHost + ":" + destination.SftpPort + "\n" +
+                "SHA-256: " + fingerprint + "\n\nДоверять этому ключу и сохранить его?",
+                "Проверка SSH-ключа сервера",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2);
+
+            if (answer != DialogResult.Yes)
+            {
+                return false;
+            }
+
+            destination.SftpHostKeyFingerprint = fingerprint;
+            ContextMenuInstaller.SaveSettings(settings);
+            return true;
         }
 
         private static int RunNomedia(string? folder)

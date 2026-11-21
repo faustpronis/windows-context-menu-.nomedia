@@ -65,7 +65,8 @@ jobs:
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
           $bin = "src/FolderTools.App/bin/Release/net48"
           Copy-Item "$bin/FolderTools.exe"        $stage
-          Copy-Item "$bin/FolderTools.Core.dll"   $stage
+          # Include the full runtime dependency set (including SSH.NET) in the zip.
+          Copy-Item "$bin/*.dll"                  $stage
           Copy-Item "$bin/FolderTools.exe.config" $stage
           Copy-Item "installer/install.bat"       $stage
           Copy-Item "installer/uninstall.bat"     $stage

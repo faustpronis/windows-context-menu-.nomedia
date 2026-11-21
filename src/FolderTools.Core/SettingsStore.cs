@@ -127,6 +127,18 @@ namespace FolderTools.Core
                     entry.Add("icon", destination.IconPath);
                 }
 
+                if (destination.Type == DestinationType.Sftp)
+                {
+                    entry.Add("type", "sftp")
+                        .Add("sftpHost", destination.SftpHost ?? string.Empty)
+                        .Add("sftpPort", destination.SftpPort)
+                        .Add("sftpRemotePath", destination.SftpRemotePath ?? string.Empty);
+                    if (!string.IsNullOrWhiteSpace(destination.SftpHostKeyFingerprint))
+                    {
+                        entry.Add("sftpHostKeyFingerprint", destination.SftpHostKeyFingerprint);
+                    }
+                }
+
                 destinations.Add(entry);
             }
 
@@ -208,7 +220,14 @@ namespace FolderTools.Core
                         patterns)
                     {
                         Category = entry.GetString("category"),
-                        IconPath = entry.GetString("icon")
+                        IconPath = entry.GetString("icon"),
+                        Type = string.Equals(entry.GetString("type"), "sftp", StringComparison.OrdinalIgnoreCase)
+                            ? DestinationType.Sftp
+                            : DestinationType.Local,
+                        SftpHost = entry.GetString("sftpHost"),
+                        SftpPort = entry.GetInt("sftpPort", 22),
+                        SftpRemotePath = entry.GetString("sftpRemotePath"),
+                        SftpHostKeyFingerprint = entry.GetString("sftpHostKeyFingerprint")
                     });
                 }
             }

@@ -40,6 +40,18 @@ namespace FolderTools.Tests
         }
 
         [Fact]
+        public void Validate_AcceptsSftpDestinationUsingRemotePath()
+        {
+            var destination = new Destination("remote", "Remote", string.Empty, new[] { "*.txt" })
+            {
+                Type = DestinationType.Sftp,
+                SftpRemotePath = "/incoming"
+            };
+
+            Assert.Null(TransferRequestValidator.Validate(destination, new[] { @"C:\a.txt" }));
+        }
+
+        [Fact]
         public void Validate_ReportsEmptySelection()
         {
             Assert.NotNull(TransferRequestValidator.Validate(Make("*.txt"), new string[0]));
