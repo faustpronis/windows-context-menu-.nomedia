@@ -63,8 +63,7 @@ namespace FolderTools.Core
 
             foreach (string target in MenuLayout.FileTargets)
             {
-                // File actions share one branded root in the file context menu. Folder
-                // icon actions retain their existing standalone Copy/Move roots.
+                // Both file and folder actions live under one branded FolderTools root.
                 bool isFiles = target == "*";
                 List<Destination> applicable = destinations
                     .Where(d => AppliesToTarget(d, target))
@@ -76,7 +75,7 @@ namespace FolderTools.Core
                 }
 
                 string shell = MenuLayout.ClassesRoot + "\\" + target + @"\shell";
-                string root = isFiles ? shell + "\\" + FileRoot : shell;
+                string root = shell + "\\" + FileRoot;
 
                 if (isFiles)
                 {
@@ -96,7 +95,7 @@ namespace FolderTools.Core
 
                 AddSubmenu(
                     entries,
-                    isFiles ? root + @"\ExtendedSubCommandsKey\Shell\01copyto" : shell + "\\" + CopyRoot,
+                    root + @"\ExtendedSubCommandsKey\Shell\" + (isFiles ? "01copyto" : "03copyto"),
                     "Копировать в",
                     isFiles ? "FolderTools.FileTools.Copy" : StoreFor(target, TransferAction.Copy),
                     applicable,
@@ -114,7 +113,7 @@ namespace FolderTools.Core
 
                 AddSubmenu(
                     entries,
-                    isFiles ? root + @"\ExtendedSubCommandsKey\Shell\02moveto" : shell + "\\" + MoveRoot,
+                    root + @"\ExtendedSubCommandsKey\Shell\" + (isFiles ? "02moveto" : "04moveto"),
                     "Переместить в",
                     isFiles ? "FolderTools.FileTools.Move" : StoreFor(target, TransferAction.Move),
                     applicable,
@@ -247,7 +246,7 @@ namespace FolderTools.Core
                 }
             }
 
-            return null;
+            return "\"" + exePath + "\",0";
         }
 
         private static string QuoteAqs(string value)

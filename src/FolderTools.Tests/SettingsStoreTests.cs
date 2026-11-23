@@ -42,7 +42,13 @@ namespace FolderTools.Tests
                 SftpHost = "sftp.example.test",
                 SftpPort = 2222,
                 SftpRemotePath = "/uploads/backups",
-                SftpHostKeyFingerprint = "SHA256:known-host-key"
+                SftpHostKeyFingerprint = "SHA256:known-host-key",
+                SftpFallbacks = new List<SftpEndpoint>
+                {
+                    new SftpEndpoint { Host = "10.0.0.8", Port = 22, HostKeyFingerprint = "SHA256:backup-key" }
+                },
+                SftpChmodExtensions = new List<string> { ".sh", ".py" },
+                SftpChmodMode = "0755"
             });
 
             string json = SettingsStore.ToJson(settings).ToJson();
@@ -54,6 +60,10 @@ namespace FolderTools.Tests
             Assert.Equal(2222, destination.SftpPort);
             Assert.Equal("/uploads/backups", destination.EffectivePath);
             Assert.Equal("SHA256:known-host-key", destination.SftpHostKeyFingerprint);
+            Assert.Equal("10.0.0.8", Assert.Single(destination.SftpFallbacks).Host);
+            Assert.Equal("SHA256:backup-key", destination.SftpFallbacks[0].HostKeyFingerprint);
+            Assert.Equal(new[] { ".sh", ".py" }, destination.SftpChmodExtensions);
+            Assert.Equal("0755", destination.SftpChmodMode);
             Assert.DoesNotContain("password", json, System.StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("username", json, System.StringComparison.OrdinalIgnoreCase);
         }
@@ -90,6 +100,42 @@ namespace FolderTools.Tests
             Assert.Equal(@"D:\X", settings.Destinations[0].Path);
             Assert.Empty(settings.Destinations[0].Patterns);
             Assert.NotNull(settings.Destinations[0].Id);
+        }
+
+        [Fact]
+        public void FromJson_LegacySftpDefaultsToNoFallbackAndNoChmod()
+        {
+            var root = JsonNode.Parse("{\"destinations\":[{\"type\":\"sftp\",\"sftpHost\":\"old.example\"}]}") as JsonObject;
+
+            Destination destination = Assert.Single(SettingsStore.FromJson(root).Destinations);
+
+            Assert.Empty(destination.SftpFallbacks);
+            Assert.Empty(destination.SftpChmodExtensions);
+            Assert.Equal("0644", destination.SftpChmodMode);
+        }
+
+        [Fact]
+        public void Clone_CopiesSftpFallbacksAndChmodCollectionsIndependently()
+        {
+            var original = new Destination("remote-1", "Backup", string.Empty, new[] { "*.zip" })
+            {
+                Type = DestinationType.Sftp,
+                SftpFallbacks = new List<SftpEndpoint>
+                {
+                    new SftpEndpoint { Host = "backup.example", Port = 2222, HostKeyFingerprint = "SHA256:backup" }
+                },
+                SftpChmodExtensions = new List<string> { ".sh" },
+                SftpChmodMode = "0755"
+            };
+
+            Destination clone = original.Clone();
+            clone.SftpFallbacks[0].Host = "changed.example";
+            clone.SftpChmodExtensions.Add(".py");
+
+            Assert.Equal("backup.example", original.SftpFallbacks[0].Host);
+            Assert.Equal(new[] { ".sh" }, original.SftpChmodExtensions);
+            Assert.Equal("SHA256:backup", clone.SftpFallbacks[0].HostKeyFingerprint);
+            Assert.Equal("0755", clone.SftpChmodMode);
         }
 
         [Fact]

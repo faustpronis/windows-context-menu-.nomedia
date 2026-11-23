@@ -17,6 +17,22 @@ namespace FolderTools.Core
         Sftp
     }
 
+    /// <summary>An additional SFTP address for the same destination and credentials.</summary>
+    public sealed class SftpEndpoint
+    {
+        public string Host { get; set; } = string.Empty;
+        public int Port { get; set; } = 22;
+        public string? HostKeyFingerprint { get; set; }
+
+        /// <summary>Runtime marker; primary endpoint is persisted in Destination's legacy fields.</summary>
+        public bool IsPrimary { get; set; }
+
+        public SftpEndpoint Clone()
+        {
+            return new SftpEndpoint { Host = Host, Port = Port, HostKeyFingerprint = HostKeyFingerprint, IsPrimary = IsPrimary };
+        }
+    }
+
     /// <summary>
     /// One destination folder plus the extension patterns that route files to it.
     /// An entry with no patterns never appears in the menu, which is how a folder
@@ -30,6 +46,9 @@ namespace FolderTools.Core
             Name = string.Empty;
             Path = string.Empty;
             Patterns = new List<string>();
+            SftpFallbacks = new List<SftpEndpoint>();
+            SftpChmodExtensions = new List<string>();
+            SftpChmodMode = "0644";
         }
 
         public Destination(string id, string name, string path, IEnumerable<string> patterns)
@@ -38,6 +57,9 @@ namespace FolderTools.Core
             Name = name;
             Path = path;
             Patterns = new List<string>(patterns);
+            SftpFallbacks = new List<SftpEndpoint>();
+            SftpChmodExtensions = new List<string>();
+            SftpChmodMode = "0644";
         }
 
         /// <summary>Stable identity, so renaming a destination does not lose its menu slot.</summary>
@@ -57,6 +79,15 @@ namespace FolderTools.Core
         public string? SftpRemotePath { get; set; }
 
         public string? SftpHostKeyFingerprint { get; set; }
+
+        /// <summary>Alternative host/port pairs, each with its own pinned SSH key.</summary>
+        public List<SftpEndpoint> SftpFallbacks { get; set; }
+
+        /// <summary>Extensions to chmod after successful publication; values include the leading dot.</summary>
+        public List<string> SftpChmodExtensions { get; set; }
+
+        /// <summary>Unix permission mode in octal notation, e.g. 0644 or 0755.</summary>
+        public string SftpChmodMode { get; set; }
 
         public string EffectivePath => Type == DestinationType.Sftp
             ? (SftpRemotePath ?? string.Empty)
@@ -117,7 +148,10 @@ namespace FolderTools.Core
                 SftpHost = SftpHost,
                 SftpPort = SftpPort,
                 SftpRemotePath = SftpRemotePath,
-                SftpHostKeyFingerprint = SftpHostKeyFingerprint
+                SftpHostKeyFingerprint = SftpHostKeyFingerprint,
+                SftpFallbacks = (SftpFallbacks ?? new List<SftpEndpoint>()).Select(e => e.Clone()).ToList(),
+                SftpChmodExtensions = new List<string>(SftpChmodExtensions ?? new List<string>()),
+                SftpChmodMode = SftpChmodMode
             };
         }
     }

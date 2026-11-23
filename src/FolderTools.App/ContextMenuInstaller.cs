@@ -75,8 +75,15 @@ namespace FolderTools.App
                 }
                 Registry.CurrentUser.DeleteSubKeyTree(shell + "\\" + DestinationMenuLayout.CopyRoot, false);
                 Registry.CurrentUser.DeleteSubKeyTree(shell + "\\" + DestinationMenuLayout.MoveRoot, false);
+                if (target == "Directory")
+                {
+                    string folderActions = shell + "\\" + DestinationMenuLayout.FileRoot + @"\ExtendedSubCommandsKey\Shell";
+                    Registry.CurrentUser.DeleteSubKeyTree(folderActions + @"\03copyto", false);
+                    Registry.CurrentUser.DeleteSubKeyTree(folderActions + @"\04moveto", false);
+                }
             }
 
+            ClearLegacyStandaloneRoots();
             ClearStores();
             foreach (RegistryEntry entry in DestinationMenuLayout.Build(
                 exe,
@@ -111,6 +118,7 @@ namespace FolderTools.App
                 Registry.CurrentUser.DeleteSubKeyTree(shell + "\\" + DestinationMenuLayout.MoveRoot, false);
             }
 
+            ClearLegacyStandaloneRoots();
             Registry.CurrentUser.DeleteSubKeyTree(
                 MenuLayout.ClassesRoot + "\\" + MenuLayout.VerbStore, false);
 
@@ -138,6 +146,17 @@ namespace FolderTools.App
                             MenuLayout.ClassesRoot + "\\" + name, false);
                     }
                 }
+            }
+        }
+
+        private static void ClearLegacyStandaloneRoots()
+        {
+            string[] targets = { "*", "Directory", @"Directory\Background", "Drive" };
+            foreach (string target in targets)
+            {
+                string shell = MenuLayout.ClassesRoot + "\\" + target + @"\shell";
+                Registry.CurrentUser.DeleteSubKeyTree(shell + "\\" + DestinationMenuLayout.CopyRoot, false);
+                Registry.CurrentUser.DeleteSubKeyTree(shell + "\\" + DestinationMenuLayout.MoveRoot, false);
             }
         }
 

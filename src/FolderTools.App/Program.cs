@@ -182,23 +182,31 @@ namespace FolderTools.App
             try
             {
                 var service = new SftpTransferService();
-                SftpTransferResult result = service.Transfer(
+                SftpTransferProgressForm dialog = null!;
+                using (dialog = new SftpTransferProgressForm((progress, cancellationToken) => service.Transfer(
                     destination,
                     action,
                     items,
                     credentials.Username ?? string.Empty,
                     credentials.Password ?? string.Empty,
-                    fingerprint => ConfirmAndRememberSftpHostKey(fingerprint, destination, settings));
-
-                if (result.HasErrors)
+                    (endpoint, fingerprint) => dialog.InvokeOnUi(() =>
+                        ConfirmAndRememberSftpHostKey(endpoint, fingerprint, destination, settings, dialog)),
+                    progress,
+                    cancellationToken)))
                 {
-                    string verb = action == TransferAction.Copy ? "отправить" : "переместить";
-                    ShowError("Не удалось " + verb + " часть объектов в «" + destination.DisplayName + "»:\n\n" +
-                              string.Join("\n", result.Errors));
+                    dialog.ShowDialog();
+                }
+
+                if (dialog.Failure != null)
+                {
+                    ShowError("Ошибка SFTP-подключения к «" + destination.DisplayName + "»:\n\n" + dialog.Failure.Message);
                     return 4;
                 }
 
-                return 0;
+                SftpTransferResult result = dialog.Result ?? new SftpTransferResult(
+                    Array.Empty<string>(), new[] { "Передача не вернула результат." }, false, 0);
+                ShowSftpTransferResult(result, destination, action);
+                return result.HasErrors ? 4 : (result.Cancelled ? 6 : 0);
             }
             catch (Exception ex)
             {
@@ -208,14 +216,17 @@ namespace FolderTools.App
         }
 
         private static bool ConfirmAndRememberSftpHostKey(
+            SftpEndpoint endpoint,
             string fingerprint,
             Destination destination,
-            FolderToolsSettings settings)
+            FolderToolsSettings settings,
+            IWin32Window? owner = null)
         {
             DialogResult answer = MessageBox.Show(
-                "У сервера ещё не сохранён SSH-ключ. Сверьте его fingerprint с администратором сервера.\n\n" +
-                "Сервер: " + destination.SftpHost + ":" + destination.SftpPort + "\n" +
-                "SHA-256: " + fingerprint + "\n\nДоверять этому ключу и сохранить его?",
+                owner,
+                "У этого адреса ещё не сохранён SSH-ключ. Сверьте fingerprint с администратором сервера.\n\n" +
+                "Сервер: " + endpoint.Host + ":" + endpoint.Port + "\n" +
+                "SHA-256: " + fingerprint + "\n\nДоверять этому ключу и сохранить его только для этого адреса?",
                 "Проверка SSH-ключа сервера",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning,
@@ -226,9 +237,59 @@ namespace FolderTools.App
                 return false;
             }
 
-            destination.SftpHostKeyFingerprint = fingerprint;
+            if (endpoint.IsPrimary)
+            {
+                destination.SftpHostKeyFingerprint = fingerprint;
+            }
+            else
+            {
+                SftpEndpoint? backup = destination.SftpFallbacks.FirstOrDefault(e =>
+                    e.Port == endpoint.Port && string.Equals(e.Host, endpoint.Host, StringComparison.OrdinalIgnoreCase));
+                if (backup != null)
+                {
+                    backup.HostKeyFingerprint = fingerprint;
+                }
+            }
             ContextMenuInstaller.SaveSettings(settings);
             return true;
+        }
+
+        private static void ShowSftpTransferResult(SftpTransferResult result, Destination destination, TransferAction action)
+        {
+            string state = result.Cancelled ? "отменена" : result.HasErrors ? "завершена с ошибками" : "завершена успешно";
+            string title = action == TransferAction.Copy ? "SFTP-копирование" : "SFTP-перемещение";
+            string text = "Передача в «" + destination.DisplayName + "» " + state + ".\n\n" +
+                          "Успешно: " + result.Completed.Count + "\n" +
+                          "Ошибок: " + result.Errors.Count + "\n" +
+                          "Передано: " + FormatBytes(result.BytesTransferred);
+            if (result.Errors.Count > 0)
+            {
+                text += "\n\n" + string.Join("\n", result.Errors.Take(8));
+                if (result.Errors.Count > 8)
+                {
+                    text += "\n… и ещё " + (result.Errors.Count - 8) + " ошибок.";
+                }
+            }
+
+            MessageBox.Show(text, title, MessageBoxButtons.OK,
+                result.HasErrors || result.Cancelled ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
+        }
+
+        private static string FormatBytes(long bytes)
+        {
+            if (bytes < 1024)
+            {
+                return bytes + " Б";
+            }
+            double value = bytes;
+            string[] units = { "КБ", "МБ", "ГБ", "ТБ" };
+            int unit = -1;
+            do
+            {
+                value /= 1024.0;
+                unit++;
+            } while (value >= 1024.0 && unit < units.Length - 1);
+            return value.ToString("0.0", System.Globalization.CultureInfo.CurrentCulture) + " " + units[unit];
         }
 
         private static int RunNomedia(string? folder)

@@ -137,6 +137,24 @@ namespace FolderTools.Core
                     {
                         entry.Add("sftpHostKeyFingerprint", destination.SftpHostKeyFingerprint);
                     }
+
+                    var fallbacks = new JsonArray();
+                    foreach (SftpEndpoint endpoint in destination.SftpFallbacks ?? new List<SftpEndpoint>())
+                    {
+                        var backup = new JsonObject()
+                            .Add("host", endpoint.Host ?? string.Empty)
+                            .Add("port", endpoint.Port);
+                        if (!string.IsNullOrWhiteSpace(endpoint.HostKeyFingerprint))
+                        {
+                            backup.Add("hostKeyFingerprint", endpoint.HostKeyFingerprint);
+                        }
+
+                        fallbacks.Add(backup);
+                    }
+
+                    entry.Add("sftpFallbacks", fallbacks)
+                        .Add("sftpChmodExtensions", destination.SftpChmodExtensions ?? new List<string>())
+                        .Add("sftpChmodMode", string.IsNullOrWhiteSpace(destination.SftpChmodMode) ? "0644" : destination.SftpChmodMode);
                 }
 
                 destinations.Add(entry);
@@ -213,7 +231,7 @@ namespace FolderTools.Core
                         }
                     }
 
-                    settings.Destinations.Add(new Destination(
+                    var destination = new Destination(
                         entry.GetString("id") ?? Guid.NewGuid().ToString("N"),
                         entry.GetString("name") ?? string.Empty,
                         entry.GetString("path") ?? string.Empty,
@@ -227,12 +245,65 @@ namespace FolderTools.Core
                         SftpHost = entry.GetString("sftpHost"),
                         SftpPort = entry.GetInt("sftpPort", 22),
                         SftpRemotePath = entry.GetString("sftpRemotePath"),
-                        SftpHostKeyFingerprint = entry.GetString("sftpHostKeyFingerprint")
-                    });
+                        SftpHostKeyFingerprint = entry.GetString("sftpHostKeyFingerprint"),
+                        SftpFallbacks = ReadSftpFallbacks(entry),
+                        SftpChmodExtensions = ReadStringArray(entry.GetArray("sftpChmodExtensions")),
+                        SftpChmodMode = entry.GetString("sftpChmodMode") ?? "0644"
+                    };
+                    settings.Destinations.Add(destination);
                 }
             }
 
             return settings;
+        }
+
+        private static List<SftpEndpoint> ReadSftpFallbacks(JsonObject entry)
+        {
+            var result = new List<SftpEndpoint>();
+            JsonArray? array = entry.GetArray("sftpFallbacks");
+            if (array == null)
+            {
+                return result;
+            }
+
+            foreach (JsonNode item in array.Items)
+            {
+                if (item is JsonObject endpoint)
+                {
+                    string host = endpoint.GetString("host") ?? string.Empty;
+                    int port = endpoint.GetInt("port", 22);
+                    if (!string.IsNullOrWhiteSpace(host) && port >= 1 && port <= 65535)
+                    {
+                        result.Add(new SftpEndpoint
+                        {
+                            Host = host,
+                            Port = port,
+                            HostKeyFingerprint = endpoint.GetString("hostKeyFingerprint")
+                        });
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        private static List<string> ReadStringArray(JsonArray? array)
+        {
+            var result = new List<string>();
+            if (array == null)
+            {
+                return result;
+            }
+
+            foreach (JsonNode item in array.Items)
+            {
+                if (item is JsonString text && !string.IsNullOrWhiteSpace(text.Value))
+                {
+                    result.Add(text.Value);
+                }
+            }
+
+            return result;
         }
     }
 }

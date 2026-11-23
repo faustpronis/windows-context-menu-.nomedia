@@ -48,8 +48,8 @@ namespace FolderTools.Tests
 
             Assert.Contains(entries, e => e.KeyPath == @"Software\Classes\*\shell\FolderTools\ExtendedSubCommandsKey\Shell\01copyto" && e.Name == "MUIVerb" && e.Value == "Копировать в");
             Assert.Contains(entries, e => e.KeyPath == @"Software\Classes\*\shell\FolderTools\ExtendedSubCommandsKey\Shell\02moveto" && e.Name == "MUIVerb" && e.Value == "Переместить в");
-            Assert.Contains(entries, e => e.KeyPath == @"Software\Classes\Directory\shell\01copyto");
-            Assert.Contains(entries, e => e.KeyPath == @"Software\Classes\Directory\shell\02moveto");
+            Assert.Contains(entries, e => e.KeyPath == @"Software\Classes\Directory\shell\FolderTools\ExtendedSubCommandsKey\Shell\03copyto");
+            Assert.Contains(entries, e => e.KeyPath == @"Software\Classes\Directory\shell\FolderTools\ExtendedSubCommandsKey\Shell\04moveto");
         }
 
         [Fact]
@@ -60,7 +60,7 @@ namespace FolderTools.Tests
             var entries = DestinationMenuLayout.Build(Exe, settings);
 
             Assert.Contains(entries, e => e.KeyPath.StartsWith(@"Software\Classes\*\shell\FolderTools\ExtendedSubCommandsKey\Shell\01copyto"));
-            Assert.DoesNotContain(entries, e => e.KeyPath.StartsWith(@"Software\Classes\Directory\shell\01copyto"));
+            Assert.DoesNotContain(entries, e => e.KeyPath.StartsWith(@"Software\Classes\Directory\shell\FolderTools\ExtendedSubCommandsKey\Shell\03copyto"));
         }
 
         [Fact]
@@ -70,7 +70,7 @@ namespace FolderTools.Tests
 
             var entries = DestinationMenuLayout.Build(Exe, settings);
 
-            Assert.Contains(entries, e => e.KeyPath.StartsWith(@"Software\Classes\Directory\shell\01copyto"));
+            Assert.Contains(entries, e => e.KeyPath.StartsWith(@"Software\Classes\Directory\shell\FolderTools\ExtendedSubCommandsKey\Shell\03copyto"));
             Assert.DoesNotContain(entries, e => e.KeyPath.StartsWith(@"Software\Classes\*\shell\FolderTools\ExtendedSubCommandsKey\Shell\01copyto"));
         }
 
@@ -131,8 +131,9 @@ namespace FolderTools.Tests
 
                 var entries = DestinationMenuLayout.Build(Exe, SettingsWith(destination), baseDir);
 
-                Assert.DoesNotContain(entries, e =>
-                    e.KeyPath.EndsWith(@"\Shell\01", System.StringComparison.Ordinal) && e.Name == "Icon");
+                Assert.Contains(entries, e =>
+                    e.KeyPath.EndsWith(@"\Shell\01", System.StringComparison.Ordinal) &&
+                    e.Name == "Icon" && e.Value == "\"" + Exe + "\",0");
             }
             finally
             {

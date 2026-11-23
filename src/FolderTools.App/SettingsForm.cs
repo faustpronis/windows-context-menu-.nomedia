@@ -810,7 +810,7 @@ namespace FolderTools.App
             using (var dialog = new OpenFileDialog())
             {
                 dialog.Title = "Выберите иконку";
-                dialog.Filter = "Иконки (*.ico)|*.ico|Все файлы (*.*)|*.*";
+                dialog.Filter = "Иконки ICO и PNG (*.ico;*.png)|*.ico;*.png|ICO (*.ico)|*.ico|PNG (*.png)|*.png|Все файлы (*.*)|*.*";
                 dialog.CheckFileExists = true;
                 if (dialog.ShowDialog(this) != DialogResult.OK)
                 {
@@ -819,7 +819,7 @@ namespace FolderTools.App
 
                 try
                 {
-                    destination.IconPath = IconStore.Import(
+                    destination.IconPath = IconImporter.Import(
                         BaseDirectory,
                         destination.Id,
                         dialog.FileName);
