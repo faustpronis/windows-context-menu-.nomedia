@@ -215,7 +215,7 @@ namespace FolderTools.App
             _browseFolder.Text = "Обзор…";
             _browseFolder.Width = 86;
             _browseFolder.Height = 28;
-            _browseFolder.Click += (s, e) => BrowseFolder();
+            _browseFolder.Click += (s, e) => BrowseSelectedDestination();
             pathRow.Controls.Add(_browseFolder, 1, 0);
             details.Controls.Add(pathRow, 1, 1);
 
@@ -300,6 +300,7 @@ namespace FolderTools.App
             };
             buttons.Controls.Add(MakeButton("Добавить SFTP…", AddSftpDestination));
             buttons.Controls.Add(MakeButton("Изменить…", EditRemoteConnection));
+            buttons.Controls.Add(MakeButton("Test connection", TestRemoteConnection));
             buttons.Controls.Add(MakeButton("Удалить", RemoveRemoteConnection));
 
             var note = new Label
@@ -400,9 +401,9 @@ namespace FolderTools.App
             {
                 Dock = DockStyle.Top,
                 ColumnCount = 2,
-                RowCount = 3,
+                RowCount = 4,
                 AutoSize = true,
-                Height = 130
+                Height = 190
             };
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 160));
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -424,11 +425,24 @@ namespace FolderTools.App
             layout.Controls.Add(new Label { Text = "Уведомления:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
             layout.Controls.Add(_showSuccess, 1, 1);
 
+            layout.Controls.Add(new Label { Text = "Меню Explorer:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 2);
+            var menuButtons = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                AutoSize = true,
+                WrapContents = true,
+                Padding = new Padding(0, 2, 0, 2)
+            };
+            menuButtons.Controls.Add(MakeButton("Установить / обновить", InstallOrUpdateMenu));
+            menuButtons.Controls.Add(MakeButton("Очистить старые пункты", RepairMenuEntries));
+            menuButtons.Controls.Add(MakeButton("Удалить меню", UninstallMenu));
+            layout.Controls.Add(menuButtons, 1, 2);
+
             var note = new Label
             {
                 Dock = DockStyle.Top,
                 AutoSize = false,
-                Height = 96,
+                Height = 112,
                 Padding = new Padding(0, 12, 0, 0),
                 ForeColor = Color.FromArgb(80, 80, 80),
                 Text = "Все настройки хранятся в файле " + SettingsStore.FileName
@@ -436,13 +450,74 @@ namespace FolderTools.App
                      + AppPaths.IconsFolderName + ".\r\n"
                      + "Пути внутри папки программы записываются относительными, поэтому "
                      + "папку можно целиком скопировать или перенести.\r\n"
+                     + "Установка и удаление меню доступны выше; очистка старых пунктов заново "
+                     + "регистрирует FolderTools и убирает отдельные «Копировать в» / «Переместить в».\r\n"
                      + "Поле DeskEdit можно оставить пустым: тогда программа ищет "
                      + "DeskEdit.exe рядом с собой и в C:\\Tools\\DeskEdit."
             };
 
-            page.Controls.Add(note);
             page.Controls.Add(layout);
+            page.Controls.Add(note);
             return page;
+        }
+
+        private void InstallOrUpdateMenu()
+        {
+            try
+            {
+                string[] undeletedDlls = ContextMenuInstaller.CleanupLegacyRootDlls();
+                ContextMenuInstaller.Install();
+                string message = "Пункты FolderTools установлены/обновлены. Старые отдельные пункты копирования и перемещения очищены.";
+                if (undeletedDlls.Length > 0)
+                {
+                    message += "\r\n\r\nНе удалось удалить некоторые старые DLL из корня папки программы (возможно, они используются):\r\n" +
+                               string.Join("\r\n", undeletedDlls);
+                }
+                MessageBox.Show(this, message,
+                    "FolderTools", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Не удалось установить пункты меню:\r\n" + ex.Message,
+                    "FolderTools", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void RepairMenuEntries()
+        {
+            try
+            {
+                ContextMenuInstaller.RefreshMenu();
+                MessageBox.Show(this, "Меню обновлено. Старые отдельные пункты «Копировать в» и «Переместить в» удалены.",
+                    "FolderTools", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Не удалось очистить старые пункты меню:\r\n" + ex.Message,
+                    "FolderTools", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void UninstallMenu()
+        {
+            if (MessageBox.Show(this,
+                    "Удалить пункты FolderTools из контекстного меню Explorer? Настройки и сохранённые пароли останутся.",
+                    "Удаление FolderTools", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+            {
+                return;
+            }
+
+            try
+            {
+                ContextMenuInstaller.Uninstall();
+                MessageBox.Show(this, "Пункты FolderTools удалены из контекстного меню.",
+                    "FolderTools", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Не удалось удалить пункты меню:\r\n" + ex.Message,
+                    "FolderTools", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
         private void BrowseDeskEdit()
@@ -610,6 +685,23 @@ namespace FolderTools.App
             LoadDestinations();
         }
 
+        private void TestRemoteConnection()
+        {
+            Destination? destination = SelectedRemoteConnection();
+            if (destination == null)
+            {
+                MessageBox.Show(this, "Сначала выберите SFTP-получателя.", "FolderTools",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            using (var form = new SftpDestinationForm(destination))
+            {
+                form.RunConnectionTestFromManager();
+            }
+            LoadDestinations();
+        }
+
         private string? CategoryName(string? categoryId)
         {
             if (string.IsNullOrWhiteSpace(categoryId))
@@ -695,7 +787,7 @@ namespace FolderTools.App
             _name.Text = destination.Name;
             bool isSftp = destination.Type == DestinationType.Sftp;
             _path.ReadOnly = isSftp;
-            _browseFolder.Enabled = !isSftp;
+            _browseFolder.Enabled = true;
             _path.Text = isSftp
                 ? "sftp://" + (destination.SftpHost ?? string.Empty) + ":" + destination.SftpPort + (destination.SftpRemotePath ?? string.Empty)
                 : destination.Path;
@@ -955,6 +1047,24 @@ namespace FolderTools.App
         }
 
         private static string BaseDirectory => AppDomain.CurrentDomain.BaseDirectory;
+
+        private void BrowseSelectedDestination()
+        {
+            Destination? destination = Selected;
+            if (destination == null || destination.Type != DestinationType.Sftp)
+            {
+                BrowseFolder();
+                return;
+            }
+
+            using (var form = new SftpDestinationForm(destination))
+            {
+                if (form.BrowseRemoteFolderFromManager())
+                {
+                    LoadDestinations();
+                }
+            }
+        }
 
         private void BrowseFolder()
         {

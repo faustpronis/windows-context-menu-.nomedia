@@ -40,6 +40,19 @@ namespace FolderTools.App
         public bool HasErrors => Errors.Count > 0;
     }
 
+    internal sealed class SftpConnectionTestReport
+    {
+        public bool ConnectionSucceeded { get; set; }
+        public bool DirectoryExists { get; set; }
+        public bool DirectoryReadable { get; set; }
+        public bool DirectoryWritable { get; set; }
+        public bool DirectoryMissing { get; set; }
+        public string ConnectionMessage { get; set; } = string.Empty;
+        public string DirectoryMessage { get; set; } = string.Empty;
+        public string ReadMessage { get; set; } = string.Empty;
+        public string WriteMessage { get; set; } = string.Empty;
+    }
+
     /// <summary>
     /// SFTP upload with endpoint failover. Candidate endpoints connect concurrently;
     /// the first authenticated endpoint with access to the configured directory wins.
@@ -166,12 +179,222 @@ namespace FolderTools.App
             string password,
             Func<SftpEndpoint, string, bool> trustUnknownHost)
         {
-            Validate(destination, username, password, trustUnknownHost);
-            using (SftpClient client = ConnectFastest(destination, username, password, trustUnknownHost, null, CancellationToken.None))
+            SftpConnectionTestReport report = TestConnectionDetailed(destination, username, password, trustUnknownHost);
+            if (!report.ConnectionSucceeded || !report.DirectoryExists || !report.DirectoryReadable || !report.DirectoryWritable)
             {
-                string remotePath = NormalizeRemotePath(destination.SftpRemotePath ?? string.Empty);
-                client.ListDirectory(remotePath).Take(1).ToList();
+                throw new IOException(string.Join("\n", new[]
+                {
+                    report.ConnectionMessage,
+                    report.DirectoryMessage,
+                    report.ReadMessage,
+                    report.WriteMessage
+                }.Where(message => !string.IsNullOrWhiteSpace(message))));
             }
+        }
+
+        internal static SftpConnectionTestReport TestConnectionDetailed(
+            Destination destination,
+            string username,
+            string password,
+            Func<SftpEndpoint, string, bool> trustUnknownHost)
+        {
+            var report = new SftpConnectionTestReport();
+            try
+            {
+                Validate(destination, username, password, trustUnknownHost);
+                Destination connection = destination.Clone();
+                connection.SftpRemotePath = ".";
+                using (SftpClient client = ConnectFastest(connection, username, password, trustUnknownHost, null, CancellationToken.None))
+                {
+                    CopyHostKeys(connection, destination);
+                    report.ConnectionSucceeded = true;
+                    report.ConnectionMessage = "Сервер доступен, SSH-аутентификация прошла.";
+
+                    string remotePath = NormalizeRemotePath(destination.SftpRemotePath ?? string.Empty);
+                    try
+                    {
+                        if (!client.Exists(remotePath))
+                        {
+                            report.DirectoryMissing = true;
+                            report.DirectoryMessage = "Удалённая папка не существует: " + remotePath;
+                            report.ReadMessage = "Чтение не проверено: папка отсутствует.";
+                            report.WriteMessage = "Запись не проверена: папка отсутствует.";
+                            return report;
+                        }
+                        if (!client.GetAttributes(remotePath).IsDirectory)
+                        {
+                            report.DirectoryMessage = "Путь существует, но это не папка: " + remotePath;
+                            report.ReadMessage = "Чтение не проверено: путь не является папкой.";
+                            report.WriteMessage = "Запись не проверена: путь не является папкой.";
+                            return report;
+                        }
+
+                        report.DirectoryExists = true;
+                        report.DirectoryMessage = "Папка существует.";
+                    }
+                    catch (Exception ex)
+                    {
+                        report.DirectoryMessage = "Не удалось проверить папку: " + HumanizeSftpError(ex);
+                        report.ReadMessage = "Чтение не проверено.";
+                        report.WriteMessage = "Запись не проверена.";
+                        return report;
+                    }
+
+                    try
+                    {
+                        client.ListDirectory(remotePath).Take(1).ToList();
+                        report.DirectoryReadable = true;
+                        report.ReadMessage = "Содержимое папки доступно для чтения.";
+                    }
+                    catch (Exception ex)
+                    {
+                        report.ReadMessage = "Не удалось прочитать содержимое папки: " + HumanizeSftpError(ex);
+                    }
+
+                    string probe = JoinRemote(remotePath, ".foldertools-write-test-" + Guid.NewGuid().ToString("N"));
+                    try
+                    {
+                        using (Stream output = client.Create(probe))
+                        {
+                            output.WriteByte(0x46);
+                            output.Flush();
+                        }
+                        report.DirectoryWritable = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        try
+                        {
+                            if (client.Exists(probe))
+                            {
+                                client.DeleteFile(probe);
+                            }
+                        }
+                        catch
+                        {
+                            report.WriteMessage = "Не удалось удалить временный тестовый файл «" + probe + "». ";
+                        }
+                        report.WriteMessage += "Запись не подтверждена: " + HumanizeSftpError(ex);
+                    }
+
+                    if (report.DirectoryWritable)
+                    {
+                        try
+                        {
+                            client.DeleteFile(probe);
+                            report.WriteMessage = "Запись и удаление временного тестового файла работают.";
+                        }
+                        catch (Exception ex)
+                        {
+                            report.WriteMessage = "Запись разрешена, но тестовый файл не удалось удалить: " + probe +
+                                                  ". Причина: " + HumanizeSftpError(ex);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                report.ConnectionMessage = HumanizeConnectionError(ex);
+            }
+
+            return report;
+        }
+
+        internal static void CreateRemoteDirectory(
+            Destination destination,
+            string username,
+            string password,
+            Func<SftpEndpoint, string, bool> trustUnknownHost)
+        {
+            try
+            {
+                Validate(destination, username, password, trustUnknownHost);
+                Destination connection = destination.Clone();
+                connection.SftpRemotePath = ".";
+                using (SftpClient client = ConnectFastest(connection, username, password, trustUnknownHost, null, CancellationToken.None))
+                {
+                    CopyHostKeys(connection, destination);
+                    string path = NormalizeRemotePath(destination.SftpRemotePath ?? string.Empty);
+                    if (path.Length == 0 || path == ".")
+                    {
+                        throw new ArgumentException("Не задан путь удалённой папки для создания.");
+                    }
+                    if (!path.StartsWith("/", StringComparison.Ordinal))
+                    {
+                        path = JoinRemote(client.WorkingDirectory, path);
+                    }
+
+                    string current = "/";
+                    foreach (string segment in path.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        current = current == "/" ? "/" + segment : current + "/" + segment;
+                        if (client.Exists(current))
+                        {
+                            if (!client.GetAttributes(current).IsDirectory)
+                            {
+                                throw new IOException("Часть пути существует, но не является папкой: " + current);
+                            }
+                        }
+                        else
+                        {
+                            client.CreateDirectory(current);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex) when (!(ex is ArgumentException) && !(ex is IOException && ex.Message.StartsWith("Часть пути", StringComparison.Ordinal)))
+            {
+                throw new IOException("Не удалось создать удалённую папку: " + HumanizeSftpError(ex), ex);
+            }
+        }
+
+        private static void CopyHostKeys(Destination source, Destination target)
+        {
+            target.SftpHostKeyFingerprint = source.SftpHostKeyFingerprint;
+            target.SftpFallbacks = source.SftpFallbacks;
+        }
+
+        private static string HumanizeConnectionError(Exception exception)
+        {
+            string type = exception.GetType().Name;
+            string message = HumanizeSftpError(exception);
+            string fullMessage = exception.ToString();
+            if (type.IndexOf("Authentication", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                fullMessage.IndexOf("authentication failed", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                fullMessage.IndexOf("permission denied (password)", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "SFTP-сервер отвечает, но не принял логин/пароль: " + message;
+            }
+            if (type.IndexOf("Socket", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                type.IndexOf("Timeout", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                type.IndexOf("Connection", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "Не удалось установить соединение с SFTP-сервером. Проверьте адрес, порт и сеть: " + message;
+            }
+            return "Не удалось подключиться к SFTP-серверу: " + message;
+        }
+
+        private static string HumanizeSftpError(Exception exception)
+        {
+            string message = exception.Message ?? string.Empty;
+            if (message.IndexOf("permission denied", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                exception.GetType().Name.IndexOf("PermissionDenied", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                exception is UnauthorizedAccessException)
+            {
+                return "у пользователя нет необходимых прав доступа (Permission denied).";
+            }
+            if (message.IndexOf("no such file", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                exception is DirectoryNotFoundException ||
+                exception.GetType().Name.IndexOf("PathNotFound", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "указанный путь не найден на сервере.";
+            }
+            if (message.IndexOf("timed out", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                exception.GetType().Name.IndexOf("Timeout", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "истекло время ожидания ответа сервера.";
+            }
+            return message.Length == 0 ? exception.GetType().Name : message;
         }
 
         internal static SftpDirectoryBrowserSession OpenDirectoryBrowser(

@@ -71,8 +71,6 @@ jobs:
           New-Item -ItemType Directory -Force -Path $dllStage | Out-Null
           Copy-Item "$bin/*.dll"                  $dllStage
           Copy-Item "$bin/FolderTools.exe.config" $stage
-          Copy-Item "installer/install.bat"       $stage
-          Copy-Item "installer/uninstall.bat"     $stage
           Copy-Item "README.md"                   $stage
           [xml]$appConfig = Get-Content (Join-Path $stage "FolderTools.exe.config")
           $probing = $appConfig.SelectSingleNode("/configuration/runtime/probing")

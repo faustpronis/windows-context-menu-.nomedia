@@ -21,9 +21,8 @@
 - `-i`, `--install` — регистрация; `-r`, `-remove`, `--uninstall`, `-u` — удаление;
   `-v`, `--version`; `-h`, `--help`; `nomedia <папка>`; `deskedit <папка>`;
   `set-deskedit <путь>`. Разбор — `CommandLine.Parse`, алиасы покрыты тестами.
-- exe собирается как WinExe, чтобы меню не мигало консолью. Из-за этого `cmd` его не
-  ждёт: в bat-файлах запуск идёт через `start /wait`, а сам exe цепляется к консоли
-  родителя (`ConsoleSupport.TryAttach`), иначе печатать некуда.
+- exe собирается как WinExe, чтобы меню не мигало консолью. Установка/удаление меню
+  доступны в GUI настроек и через `-i`/`-r`; batch-установщиков больше нет.
 
 ## Что это
 
@@ -36,7 +35,8 @@
 - `src/FolderTools.App` — net48, WinForms: точка входа и работа с реестром.
 - `src/FolderTools.Tests` — net8.0, xUnit; ссылается только на Core.
 - `assets/app.ico` — генерируется `tools/make_icon.py` (без сторонних библиотек).
-- `installer/` — `install.bat`, `uninstall.bat` (вызывают `FolderTools.exe install|uninstall`).
+- Установка и удаление пунктов Explorer выполняются из «Прочее» в SettingsForm;
+  batch-скрипты в исходниках и ZIP не используются.
 
 ## Сборка и тесты
 

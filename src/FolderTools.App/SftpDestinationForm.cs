@@ -23,6 +23,7 @@ namespace FolderTools.App
         private readonly Label _credentialStatus = new Label();
         private readonly Label _hostKeyStatus = new Label();
         private SftpCredentialLookup _credentials;
+        private bool _remoteBrowseSucceeded;
 
         public SftpDestinationForm(Destination destination)
         {
@@ -339,6 +340,7 @@ namespace FolderTools.App
 
         private void BrowseRemoteFolder()
         {
+            _remoteBrowseSucceeded = false;
             try
             {
                 Destination edited = GetEditedDestination();
@@ -359,6 +361,10 @@ namespace FolderTools.App
                     if (browser.ShowDialog(this) == DialogResult.OK)
                     {
                         _remotePath.Text = browser.SelectedPath;
+                        edited.SftpRemotePath = browser.SelectedPath;
+                        _editedDestination.SftpHostKeyFingerprint = edited.SftpHostKeyFingerprint;
+                        _editedDestination.SftpFallbacks = edited.SftpFallbacks;
+                        _remoteBrowseSucceeded = true;
                     }
                 }
             }
@@ -367,6 +373,27 @@ namespace FolderTools.App
                 MessageBox.Show(this, "Не удалось получить список удалённых папок:\n" + ex.Message,
                     "FolderTools", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
+        }
+
+        internal bool BrowseRemoteFolderFromManager()
+        {
+            BrowseRemoteFolder();
+            if (!_remoteBrowseSucceeded)
+            {
+                return false;
+            }
+
+            _destination.SftpRemotePath = _remotePath.Text.Trim();
+            _destination.SftpHostKeyFingerprint = _editedDestination.SftpHostKeyFingerprint;
+            _destination.SftpFallbacks = _editedDestination.SftpFallbacks;
+            return true;
+        }
+
+        internal void RunConnectionTestFromManager()
+        {
+            TestConnection();
+            _destination.SftpHostKeyFingerprint = _editedDestination.SftpHostKeyFingerprint;
+            _destination.SftpFallbacks = _editedDestination.SftpFallbacks;
         }
 
         private void TestConnection()
@@ -381,17 +408,60 @@ namespace FolderTools.App
                     password = _credentials.Password ?? string.Empty;
                 }
 
-                SftpTransferService.TestConnection(edited, username, password, ConfirmUnknownHostKey);
+                SftpConnectionTestReport report = SftpTransferService.TestConnectionDetailed(
+                    edited, username, password, ConfirmUnknownHostKey);
+
+                if (report.DirectoryMissing && report.ConnectionSucceeded &&
+                    MessageBox.Show(this,
+                        "Сервер доступен, но удалённая папка не существует:\r\n" + edited.SftpRemotePath +
+                        "\r\n\r\nСоздать эту папку (и отсутствующие родительские папки)?",
+                        "SFTP — папка не найдена", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+                {
+                    try
+                    {
+                        SftpTransferService.CreateRemoteDirectory(edited, username, password, ConfirmUnknownHostKey);
+                        report = SftpTransferService.TestConnectionDetailed(edited, username, password, ConfirmUnknownHostKey);
+                    }
+                    catch (Exception createError)
+                    {
+                        report.DirectoryMessage += "\r\nНе удалось создать папку: " + createError.Message;
+                    }
+                }
+
                 _editedDestination.SftpHostKeyFingerprint = edited.SftpHostKeyFingerprint;
                 _editedDestination.SftpFallbacks = edited.SftpFallbacks;
-                _hostKeyStatus.Text = "Проверено: основной и доступные резервные адреса.";
-                _hostKeyStatus.ForeColor = Color.FromArgb(0, 110, 0);
-                MessageBox.Show(this, "Соединение установлено, удалённая папка доступна.", "FolderTools", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                bool passed = report.ConnectionSucceeded && report.DirectoryExists &&
+                              report.DirectoryReadable && report.DirectoryWritable;
+                _hostKeyStatus.Text = report.ConnectionSucceeded
+                    ? "Сервер проверен; см. подробный отчёт."
+                    : "Проверка соединения не пройдена.";
+                _hostKeyStatus.ForeColor = passed ? Color.FromArgb(0, 110, 0) : Color.DarkRed;
+                MessageBox.Show(this, FormatConnectionTestReport(report), "Результат проверки SFTP",
+                    MessageBoxButtons.OK, passed ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
             }
             catch (Exception ex)
             {
                 MessageBox.Show(this, "Не удалось проверить SFTP-подключение:\n" + ex.Message, "FolderTools", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
+        }
+
+        private static string FormatConnectionTestReport(SftpConnectionTestReport report)
+        {
+            return "Подключение и авторизация: " + StatusMark(report.ConnectionSucceeded, report.ConnectionMessage) + " " + report.ConnectionMessage + "\r\n" +
+                   "Удалённая папка: " + StatusMark(report.DirectoryExists, report.DirectoryMessage) + " " + report.DirectoryMessage + "\r\n" +
+                   "Чтение: " + StatusMark(report.DirectoryReadable, report.ReadMessage) + " " + report.ReadMessage + "\r\n" +
+                   "Запись: " + StatusMark(report.DirectoryWritable, report.WriteMessage) + " " + report.WriteMessage;
+        }
+
+        private static string StatusMark(bool passed, string message)
+        {
+            if (passed)
+            {
+                return "OK";
+            }
+            return (message ?? string.Empty).IndexOf("не проверено", StringComparison.OrdinalIgnoreCase) >= 0
+                ? "—"
+                : "Не пройдено";
         }
 
         private bool ConfirmUnknownHostKey(SftpEndpoint endpoint, string fingerprint)

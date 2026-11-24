@@ -39,6 +39,7 @@ namespace FolderTools.App
 
         public static void Install()
         {
+            CleanupLegacyRootDlls();
             string exe = ExecutablePath;
 
             foreach (RegistryEntry entry in MenuLayout.Build(exe))
@@ -57,6 +58,27 @@ namespace FolderTools.App
             }
 
             RefreshMenu();
+        }
+
+        internal static string[] CleanupLegacyRootDlls()
+        {
+            var undeleted = new System.Collections.Generic.List<string>();
+            foreach (string file in Directory.GetFiles(AppDomain.CurrentDomain.BaseDirectory, "*.dll", SearchOption.TopDirectoryOnly))
+            {
+                try
+                {
+                    File.Delete(file);
+                }
+                catch (IOException)
+                {
+                    undeleted.Add(Path.GetFileName(file));
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    undeleted.Add(Path.GetFileName(file));
+                }
+            }
+            return undeleted.ToArray();
         }
 
         /// <summary>
