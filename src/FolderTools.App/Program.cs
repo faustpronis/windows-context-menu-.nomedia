@@ -89,12 +89,15 @@ namespace FolderTools.App
 
         private static int RunSettings()
         {
-            using (var form = new SettingsForm())
+            return SettingsWindowCoordinator.Run(() =>
             {
-                form.ShowDialog();
-            }
+                using (var form = new SettingsForm())
+                {
+                    form.ShowDialog();
+                }
 
-            return 0;
+                return 0;
+            });
         }
 
         /// <summary>

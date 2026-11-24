@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Security.Cryptography;
 
 namespace FolderTools.Core
 {
@@ -18,9 +19,9 @@ namespace FolderTools.Core
         /// Copies <paramref name="sourcePath"/> into the icons folder and returns the
         /// stored (relative) path.
         ///
-        /// The name is derived from the destination id, so re-picking an icon replaces
-        /// the old file instead of leaving orphans behind. When a file with that name
-        /// already holds the same bytes, it is left untouched.
+        /// The name includes a content hash: changing an icon changes the registry path,
+        /// which avoids Explorer's tendency to keep displaying a stale cached image.
+        /// Re-importing identical bytes reuses the existing file.
         /// </summary>
         public static string Import(string baseDirectory, string destinationId, string sourcePath)
         {
@@ -57,15 +58,20 @@ namespace FolderTools.Core
                 Directory.CreateDirectory(iconsDirectory);
             }
 
-            string fileName = SanitizeId(destinationId) + extension.ToLowerInvariant();
-            string target = Path.Combine(iconsDirectory, fileName);
             string sourceNative = PathUtil.ToNative(source);
+            byte[] bytes = File.ReadAllBytes(sourceNative);
+            string fileName = SanitizeId(destinationId);
+            if (fileName.Length > 48)
+            {
+                fileName = fileName.Substring(0, 48);
+            }
+            fileName += "-" + ContentHash(bytes) + extension.ToLowerInvariant();
+            string target = Path.Combine(iconsDirectory, fileName);
 
             // Copying onto the same file would truncate it, which is easy to hit when
             // the user re-picks the icon that is already in place.
             if (!IsSameFile(sourceNative, target))
             {
-                byte[] bytes = File.ReadAllBytes(sourceNative);
                 if (!File.Exists(target) || !SameContent(target, bytes))
                 {
                     File.WriteAllBytes(target, bytes);
@@ -73,6 +79,15 @@ namespace FolderTools.Core
             }
 
             return AppPaths.ToStored(baseDirectory, target);
+        }
+
+        private static string ContentHash(byte[] bytes)
+        {
+            using (SHA256 sha = SHA256.Create())
+            {
+                byte[] hash = sha.ComputeHash(bytes);
+                return BitConverter.ToString(hash).Replace("-", string.Empty).ToLowerInvariant();
+            }
         }
 
         /// <summary>

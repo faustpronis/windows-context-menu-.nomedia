@@ -38,7 +38,7 @@ namespace FolderTools.App
             _original = ContextMenuInstaller.LoadSettings();
             _working = _original.Clone();
 
-            Text = "FolderTools — настройки";
+            Text = SettingsWindowCoordinator.WindowTitle;
             StartPosition = FormStartPosition.CenterScreen;
             MinimumSize = new Size(780, 560);
             Size = new Size(860, 620);
@@ -129,8 +129,17 @@ namespace FolderTools.App
             var save = new Button { Text = "Сохранить", DialogResult = DialogResult.None, Width = 110, Height = 30 };
             save.Click += (s, e) => SaveAndClose();
             var cancel = new Button { Text = "Отмена", DialogResult = DialogResult.Cancel, Width = 110, Height = 30 };
+            var version = new Label
+            {
+                Text = "Версия " + ProductInfo.Version,
+                AutoSize = true,
+                ForeColor = Color.FromArgb(90, 90, 90),
+                TextAlign = ContentAlignment.MiddleLeft,
+                Margin = new Padding(8, 7, 0, 0)
+            };
             buttons.Controls.Add(save);
             buttons.Controls.Add(cancel);
+            buttons.Controls.Add(version);
 
             Controls.Add(tabs);
             Controls.Add(buttons);
@@ -151,6 +160,13 @@ namespace FolderTools.App
             _destinations.Dock = DockStyle.Fill;
             _destinations.IntegralHeight = false;
             _destinations.SelectedIndexChanged += (s, e) => ShowSelectedDestination();
+            _destinations.DoubleClick += (s, e) =>
+            {
+                if (Selected?.Type == DestinationType.Sftp)
+                {
+                    EditSftpDestination();
+                }
+            };
 
             // AutoSize on the panel lets it grow when the four buttons do not fit on one
             // row; a fixed height clipped the wrapped second row and hid its labels.
@@ -164,7 +180,7 @@ namespace FolderTools.App
             };
             listButtons.Controls.Add(MakeButton("Добавить", AddDestination));
             listButtons.Controls.Add(MakeButton("Добавить SFTP", AddSftpDestination));
-            listButtons.Controls.Add(MakeButton("Настроить SFTP…", EditSftpDestination));
+            listButtons.Controls.Add(MakeButton("Изменить SFTP…", EditSftpDestination));
             listButtons.Controls.Add(MakeButton("Удалить", RemoveDestination));
             listButtons.Controls.Add(MakeButton("Вверх", () => MoveDestination(-1)));
             listButtons.Controls.Add(MakeButton("Вниз", () => MoveDestination(1)));
@@ -208,16 +224,18 @@ namespace FolderTools.App
             details.Controls.Add(_categories, 1, 2);
 
             details.Controls.Add(new Label { Text = "Иконка:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 3);
-            var iconRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, Height = 30 };
+            var iconRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, Height = 32 };
+            iconRow.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
             iconRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 34));
             iconRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             iconRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));
 
-            _iconPreview.Dock = DockStyle.Fill;
+            _iconPreview.Size = new Size(24, 24);
+            _iconPreview.Anchor = AnchorStyles.Left;
             _iconPreview.SizeMode = PictureBoxSizeMode.Zoom;
             _iconPreview.BackColor = SystemColors.Control;
             _iconPreview.BorderStyle = BorderStyle.FixedSingle;
-            _iconPreview.Margin = new Padding(0, 1, 4, 1);
+            _iconPreview.Margin = new Padding(0);
             _iconPreview.Click += (s, e) => BrowseIcon();
 
             _iconPath.Dock = DockStyle.Fill;
@@ -740,10 +758,6 @@ namespace FolderTools.App
                 return;
             }
 
-            // The icon lives in the icons folder, so it would otherwise stay behind
-            // as an orphan that nothing in the settings refers to.
-            IconStore.Delete(BaseDirectory, destination.IconPath);
-
             _working.Destinations.RemoveAt(index);
             LoadDestinations();
         }
@@ -786,7 +800,7 @@ namespace FolderTools.App
             {
                 if (File.Exists(full))
                 {
-                    using (var icon = new Icon(full))
+                    using (var icon = new Icon(full, 24, 24))
                     {
                         _iconPreview.Image = icon.ToBitmap();
                     }

@@ -29,7 +29,8 @@ namespace FolderTools.Tests
 
                 string stored = IconStore.Import(baseDir, "abc123", source);
 
-                Assert.Equal(Path.Combine("icons", "abc123.ico"), stored);
+                Assert.StartsWith(Path.Combine("icons", "abc123-"), stored);
+                Assert.EndsWith(".ico", stored);
                 Assert.True(File.Exists(Path.Combine(baseDir, stored)));
                 Assert.Equal(FakeIco(), File.ReadAllBytes(Path.Combine(baseDir, stored)));
             }
@@ -81,7 +82,7 @@ namespace FolderTools.Tests
         }
 
         [Fact]
-        public void Import_ReplacesPreviousIconForSameDestination()
+        public void Import_ChangesStoredPathWhenIconChanges()
         {
             string baseDir = NewFolder();
             try
@@ -91,11 +92,12 @@ namespace FolderTools.Tests
                 File.WriteAllBytes(first, FakeIco(1));
                 File.WriteAllBytes(second, FakeIco(9));
 
-                IconStore.Import(baseDir, "same", first);
+                string previous = IconStore.Import(baseDir, "same", first);
                 string stored = IconStore.Import(baseDir, "same", second);
 
+                Assert.NotEqual(previous, stored);
                 Assert.Equal(FakeIco(9), File.ReadAllBytes(Path.Combine(baseDir, stored)));
-                Assert.Single(Directory.GetFiles(Path.Combine(baseDir, "icons")));
+                Assert.Equal(2, Directory.GetFiles(Path.Combine(baseDir, "icons")).Length);
             }
             finally
             {
@@ -151,7 +153,8 @@ namespace FolderTools.Tests
 
                 string stored = IconStore.Import(baseDir, @"a/b:c*d", source);
 
-                Assert.Equal(Path.Combine("icons", "a_b_c_d.ico"), stored);
+                Assert.StartsWith(Path.Combine("icons", "a_b_c_d-"), stored);
+                Assert.EndsWith(".ico", stored);
             }
             finally
             {
