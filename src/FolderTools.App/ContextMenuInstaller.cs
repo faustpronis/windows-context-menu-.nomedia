@@ -73,8 +73,6 @@ namespace FolderTools.App
                 {
                     Registry.CurrentUser.DeleteSubKeyTree(shell + "\\" + DestinationMenuLayout.FileRoot, false);
                 }
-                Registry.CurrentUser.DeleteSubKeyTree(shell + "\\" + DestinationMenuLayout.CopyRoot, false);
-                Registry.CurrentUser.DeleteSubKeyTree(shell + "\\" + DestinationMenuLayout.MoveRoot, false);
                 if (target == "Directory")
                 {
                     string folderActions = shell + "\\" + DestinationMenuLayout.FileRoot + @"\ExtendedSubCommandsKey\Shell";
@@ -114,8 +112,6 @@ namespace FolderTools.App
                 {
                     Registry.CurrentUser.DeleteSubKeyTree(shell + "\\" + DestinationMenuLayout.FileRoot, false);
                 }
-                Registry.CurrentUser.DeleteSubKeyTree(shell + "\\" + DestinationMenuLayout.CopyRoot, false);
-                Registry.CurrentUser.DeleteSubKeyTree(shell + "\\" + DestinationMenuLayout.MoveRoot, false);
             }
 
             ClearLegacyStandaloneRoots();
@@ -152,11 +148,20 @@ namespace FolderTools.App
         private static void ClearLegacyStandaloneRoots()
         {
             string[] targets = { "*", "Directory", @"Directory\Background", "Drive" };
+            string[] oldRootNames =
+            {
+                DestinationMenuLayout.CopyRoot,
+                DestinationMenuLayout.MoveRoot,
+                "03copyto",
+                "04moveto"
+            };
             foreach (string target in targets)
             {
                 string shell = MenuLayout.ClassesRoot + "\\" + target + @"\shell";
-                Registry.CurrentUser.DeleteSubKeyTree(shell + "\\" + DestinationMenuLayout.CopyRoot, false);
-                Registry.CurrentUser.DeleteSubKeyTree(shell + "\\" + DestinationMenuLayout.MoveRoot, false);
+                foreach (string rootName in oldRootNames)
+                {
+                    Registry.CurrentUser.DeleteSubKeyTree(shell + "\\" + rootName, false);
+                }
             }
         }
 

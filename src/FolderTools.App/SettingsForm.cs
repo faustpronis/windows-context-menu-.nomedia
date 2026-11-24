@@ -20,6 +20,7 @@ namespace FolderTools.App
         private readonly FolderToolsSettings _original;
         private FolderToolsSettings _working;
         private readonly ListBox _destinations = new ListBox();
+        private readonly ListBox _remoteConnections = new ListBox();
         private readonly ListBox _patterns = new ListBox();
         private readonly ComboBox _categories = new ComboBox();
         private readonly TextBox _name = new TextBox();
@@ -114,6 +115,7 @@ namespace FolderTools.App
         {
             var tabs = new TabControl { Dock = DockStyle.Fill };
             tabs.TabPages.Add(BuildDestinationsPage());
+            tabs.TabPages.Add(BuildRemotePage());
             tabs.TabPages.Add(BuildCategoriesPage());
             tabs.TabPages.Add(BuildMiscPage());
             tabs.TabPages.Add(BuildAboutPage());
@@ -278,6 +280,42 @@ namespace FolderTools.App
 
             split.Panel2.Controls.Add(details);
             page.Controls.Add(split);
+            return page;
+        }
+
+        private TabPage BuildRemotePage()
+        {
+            var page = new TabPage("Remote") { Padding = new Padding(10) };
+            _remoteConnections.Dock = DockStyle.Fill;
+            _remoteConnections.IntegralHeight = false;
+            _remoteConnections.DoubleClick += (s, e) => EditRemoteConnection();
+
+            var buttons = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Bottom,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                WrapContents = true,
+                Padding = new Padding(0, 5, 0, 4)
+            };
+            buttons.Controls.Add(MakeButton("Добавить SFTP…", AddSftpDestination));
+            buttons.Controls.Add(MakeButton("Изменить…", EditRemoteConnection));
+            buttons.Controls.Add(MakeButton("Удалить", RemoveRemoteConnection));
+
+            var note = new Label
+            {
+                Dock = DockStyle.Top,
+                AutoSize = false,
+                Height = 48,
+                Text = "Здесь собраны отдельные SFTP-подключения получателей. Настройки пароля " +
+                       "и удалённой папки открываются двойным щелчком или кнопкой «Изменить».\r\n" +
+                       "В будущем здесь можно будет настраивать облачные службы через rclone.",
+                ForeColor = Color.FromArgb(70, 70, 70)
+            };
+
+            page.Controls.Add(_remoteConnections);
+            page.Controls.Add(buttons);
+            page.Controls.Add(note);
             return page;
         }
 
@@ -507,6 +545,69 @@ namespace FolderTools.App
             // The selection change above fires while _loading is set, so the detail
             // fields are filled here instead.
             ShowSelectedDestination();
+            LoadRemoteConnections();
+        }
+
+        private void LoadRemoteConnections()
+        {
+            int selected = _remoteConnections.SelectedIndex;
+            _remoteConnections.Items.Clear();
+            foreach (Destination destination in _working.Destinations.Where(d => d.Type == DestinationType.Sftp))
+            {
+                string host = destination.SftpHost ?? string.Empty;
+                string endpoint = host + (destination.SftpPort == 22 ? string.Empty : ":" + destination.SftpPort);
+                _remoteConnections.Items.Add(destination.DisplayName + " — " + endpoint + (destination.SftpRemotePath ?? string.Empty));
+            }
+
+            if (_remoteConnections.Items.Count > 0)
+            {
+                _remoteConnections.SelectedIndex = Math.Min(Math.Max(selected, 0), _remoteConnections.Items.Count - 1);
+            }
+        }
+
+        private Destination? SelectedRemoteConnection()
+        {
+            Destination[] connections = _working.Destinations
+                .Where(d => d.Type == DestinationType.Sftp)
+                .ToArray();
+            int index = _remoteConnections.SelectedIndex;
+            return index >= 0 && index < connections.Length ? connections[index] : null;
+        }
+
+        private void EditRemoteConnection()
+        {
+            Destination? destination = SelectedRemoteConnection();
+            if (destination == null)
+            {
+                return;
+            }
+
+            using (var form = new SftpDestinationForm(destination))
+            {
+                if (form.ShowDialog(this) == DialogResult.OK)
+                {
+                    LoadDestinations();
+                }
+            }
+        }
+
+        private void RemoveRemoteConnection()
+        {
+            Destination? destination = SelectedRemoteConnection();
+            if (destination == null)
+            {
+                return;
+            }
+
+            if (MessageBox.Show(this,
+                    "Удалить SFTP-получатель «" + destination.DisplayName + "»?",
+                    "FolderTools", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+            {
+                return;
+            }
+
+            _working.Destinations.Remove(destination);
+            LoadDestinations();
         }
 
         private string? CategoryName(string? categoryId)
@@ -713,6 +814,7 @@ namespace FolderTools.App
             _working.Destinations.Add(destination);
             LoadDestinations();
             _destinations.SelectedIndex = _working.Destinations.Count - 1;
+            _remoteConnections.SelectedIndex = _remoteConnections.Items.Count - 1;
         }
 
         private void EditSftpDestination()

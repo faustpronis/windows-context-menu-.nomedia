@@ -74,6 +74,19 @@ namespace FolderTools.Tests
             Assert.DoesNotContain(entries, e => e.KeyPath.StartsWith(@"Software\Classes\*\shell\FolderTools\ExtendedSubCommandsKey\Shell\01copyto"));
         }
 
+        [Fact]
+        public void Build_FolderActionsStayUnderTheSingleFolderToolsRoot()
+        {
+            var settings = SettingsWith(new Destination("d1", "Dirs", @"D:\Dirs", new[] { ExtensionPattern.FolderToken }));
+
+            var entries = DestinationMenuLayout.Build(Exe, settings);
+
+            Assert.Contains(entries, e => e.KeyPath == @"Software\Classes\Directory\shell\FolderTools\ExtendedSubCommandsKey\Shell\03copyto");
+            Assert.Contains(entries, e => e.KeyPath == @"Software\Classes\Directory\shell\FolderTools\ExtendedSubCommandsKey\Shell\04moveto");
+            Assert.DoesNotContain(entries, e => e.KeyPath == @"Software\Classes\Directory\shell\01copyto");
+            Assert.DoesNotContain(entries, e => e.KeyPath == @"Software\Classes\Directory\shell\02moveto");
+        }
+
         [Theory]
         [InlineData("FolderTools.CopyTo.Files", true)]
         [InlineData("FolderTools.MoveTo.Folders", true)]
