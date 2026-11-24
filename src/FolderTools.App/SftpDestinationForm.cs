@@ -86,7 +86,16 @@ namespace FolderTools.App
             layout.Controls.Add(new Label { Text = "Резервные адреса:", AutoSize = true, Anchor = AnchorStyles.Left | AnchorStyles.Top, Margin = new Padding(3, 7, 3, 3) }, 0, 3);
             layout.Controls.Add(_fallbacks, 1, 3);
 
-            AddRow(layout, 4, "Удалённая папка:", _remotePath);
+            var remotePathRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1 };
+            remotePathRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            remotePathRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));
+            _remotePath.Dock = DockStyle.Fill;
+            var browseRemote = new Button { Text = "Обзор…", Dock = DockStyle.Fill };
+            browseRemote.Click += (s, e) => BrowseRemoteFolder();
+            remotePathRow.Controls.Add(_remotePath, 0, 0);
+            remotePathRow.Controls.Add(browseRemote, 1, 0);
+            layout.Controls.Add(new Label { Text = "Удалённая папка:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 4);
+            layout.Controls.Add(remotePathRow, 1, 4);
             AddRow(layout, 5, "Пользователь:", _username);
             _password.UseSystemPasswordChar = true;
             AddRow(layout, 6, "Пароль:", _password);
@@ -326,6 +335,38 @@ namespace FolderTools.App
             }
 
             return result;
+        }
+
+        private void BrowseRemoteFolder()
+        {
+            try
+            {
+                Destination edited = GetEditedDestination();
+                string username = _username.Text.Trim();
+                string password = _password.Text;
+                if (password.Length == 0 && _credentials.State == SftpCredentialState.Available)
+                {
+                    password = _credentials.Password ?? string.Empty;
+                }
+
+                using (SftpDirectoryBrowserSession session = SftpTransferService.OpenDirectoryBrowser(
+                    edited,
+                    username,
+                    password,
+                    ConfirmUnknownHostKey))
+                using (var browser = new SftpRemoteFolderBrowserForm(session, edited.SftpRemotePath ?? string.Empty))
+                {
+                    if (browser.ShowDialog(this) == DialogResult.OK)
+                    {
+                        _remotePath.Text = browser.SelectedPath;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Не удалось получить список удалённых папок:\n" + ex.Message,
+                    "FolderTools", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
         }
 
         private void TestConnection()

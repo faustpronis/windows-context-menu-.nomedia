@@ -174,6 +174,21 @@ namespace FolderTools.App
             }
         }
 
+        internal static SftpDirectoryBrowserSession OpenDirectoryBrowser(
+            Destination destination,
+            string username,
+            string password,
+            Func<SftpEndpoint, string, bool> trustUnknownHost)
+        {
+            Destination connection = destination.Clone();
+            connection.SftpRemotePath = ".";
+            Validate(connection, username, password, trustUnknownHost);
+            SftpClient client = ConnectFastest(connection, username, password, trustUnknownHost, null, CancellationToken.None);
+            destination.SftpHostKeyFingerprint = connection.SftpHostKeyFingerprint;
+            destination.SftpFallbacks = connection.SftpFallbacks;
+            return new SftpDirectoryBrowserSession(client);
+        }
+
         private static SftpClient ConnectFastest(
             Destination destination,
             string username,
@@ -293,6 +308,10 @@ namespace FolderTools.App
                 await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
                 cancellationToken.ThrowIfCancellationRequested();
                 string remotePath = NormalizeRemotePath(destination.SftpRemotePath ?? string.Empty);
+                if (remotePath == ".")
+                {
+                    remotePath = client.WorkingDirectory;
+                }
                 if (!client.Exists(remotePath) || !client.GetAttributes(remotePath).IsDirectory)
                 {
                     throw new DirectoryNotFoundException("Удалённая папка не найдена на " + endpoint.Host + ": " + remotePath);
@@ -663,6 +682,61 @@ namespace FolderTools.App
                     // Progress UI closing must not interrupt or corrupt an SFTP transfer.
                 }
             }
+        }
+    }
+
+    internal sealed class SftpRemoteDirectory
+    {
+        public SftpRemoteDirectory(string name, string fullName)
+        {
+            Name = name;
+            FullName = fullName;
+        }
+
+        public string Name { get; }
+        public string FullName { get; }
+
+        public override string ToString() => Name;
+    }
+
+    internal sealed class SftpDirectoryBrowserSession : IDisposable
+    {
+        private readonly SftpClient _client;
+
+        internal SftpDirectoryBrowserSession(SftpClient client)
+        {
+            _client = client ?? throw new ArgumentNullException(nameof(client));
+        }
+
+        public string HomeDirectory => _client.WorkingDirectory;
+
+        public IReadOnlyList<SftpRemoteDirectory> ListDirectories(string path)
+        {
+            string normalized = (path ?? string.Empty).Trim().Replace('\\', '/');
+            if (normalized.Length == 0)
+            {
+                normalized = _client.WorkingDirectory;
+            }
+            while (normalized.Length > 1 && normalized.EndsWith("/", StringComparison.Ordinal))
+            {
+                normalized = normalized.Substring(0, normalized.Length - 1);
+            }
+
+            if (!_client.Exists(normalized) || !_client.GetAttributes(normalized).IsDirectory)
+            {
+                throw new DirectoryNotFoundException("Удалённая папка не найдена: " + normalized);
+            }
+
+            return _client.ListDirectory(normalized)
+                .Where(entry => entry.IsDirectory && entry.Name != "." && entry.Name != "..")
+                .Select(entry => new SftpRemoteDirectory(entry.Name, entry.FullName))
+                .OrderBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        public void Dispose()
+        {
+            _client.Dispose();
         }
     }
 }
