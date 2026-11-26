@@ -108,6 +108,16 @@ dotnet test src/FolderTools.Tests/FolderTools.Tests.csproj
   `File.Replace`. Меню перестраивается при каждом сохранении (`RefreshMenu`).
   Там же лежат `deskEditPath` и `showSuccess`; реестр — только регистрация меню
   плюс чтение значений старых сборок (миграция в `AppConfig`).
+- Portable SFTP credentials: ciphertext живёт в синхронизируемом JSON, master
+  password туда не записывается. Поддерживать authenticated `ft1` envelope и
+  не логировать/сохранять plaintext вне локального Windows Credential Manager.
+  Старое DPAPI-хранилище должно оставаться читаемым для миграции; «забыть» очищает
+  только локальный кэш, не отзывает другие устройства или офлайн-копии. Настройки
+  не объединяют конфликтующие sync-версии JSON.
+- Remote engine хранится в settings, а rclone и bclone имеют раздельные конфиги.
+  Backend discovery и remote test выполняются выбранным бинарником; тест сейчас
+  проверяет доступность/listing, не запись. Не заявлять поддержку передачи файлов
+  через облачные remote-ы или GUI их настройки, пока эти функции не реализованы.
 - Иконки пунктов: `IconStore.Import` копирует `.ico` в `icons\` и возвращает путь
   через `AppPaths.ToStored`, то есть относительный. В реестр абсолютный путь
   подставляет `DestinationMenuLayout.ResolveIconValue`; отсутствующий файл не

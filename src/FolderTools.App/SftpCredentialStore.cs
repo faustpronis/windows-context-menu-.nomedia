@@ -4,6 +4,9 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
+using System.Linq;
+using System.Windows.Forms;
+using FolderTools.Core;
 
 namespace FolderTools.App
 {
@@ -45,6 +48,96 @@ namespace FolderTools.App
             }
         }
 
+        /// <summary>Reads this computer's OS credential cache, migrating a legacy DPAPI entry when present.</summary>
+        public static SftpCredentialLookup GetCached(Destination destination)
+        {
+            if (destination == null) throw new ArgumentNullException(nameof(destination));
+            Tuple<string, string>? local = WindowsCredentialManager.ReadSftp(destination.Id);
+            if (local != null) return SftpCredentialLookup.Available(local.Item1, local.Item2);
+            SftpCredentialLookup legacy = Get(destination.Id);
+            if (legacy.State == SftpCredentialState.Available && legacy.Username != null && legacy.Password != null)
+            {
+                WindowsCredentialManager.SaveSftp(destination.Id, legacy.Username, legacy.Password);
+                return legacy;
+            }
+            return !string.IsNullOrWhiteSpace(destination.SftpPasswordEncrypted)
+                ? SftpCredentialLookup.NeedsReentry()
+                : legacy;
+        }
+
+        /// <summary>Loads cached credentials or unlocks the portable payload with the local master password.</summary>
+        public static SftpCredentialLookup GetForUse(Destination destination, string? hint, IWin32Window? owner)
+        {
+            SftpCredentialLookup cached = GetCached(destination);
+            if (cached.State == SftpCredentialState.Available) return cached;
+            if (string.IsNullOrWhiteSpace(destination.SftpPasswordEncrypted)) return cached;
+            string? master = WindowsCredentialManager.ReadMasterPassword();
+            if (master == null)
+            {
+                master = MasterPasswordEntryForm.Prompt(owner, hint);
+                if (master == null) return SftpCredentialLookup.NeedsReentry();
+            }
+            try { return UnlockAndCache(destination, master); }
+            catch (System.Security.Cryptography.CryptographicException)
+            {
+                string? retry = MasterPasswordEntryForm.Prompt(owner, hint, "Не удалось расшифровать. Проверьте мастер-пароль и попробуйте снова.");
+                if (retry == null) return SftpCredentialLookup.NeedsReentry();
+                try { return UnlockAndCache(destination, retry); }
+                catch (System.Security.Cryptography.CryptographicException) { return SftpCredentialLookup.NeedsReentry(); }
+            }
+        }
+
+        private static SftpCredentialLookup UnlockAndCache(Destination destination, string master)
+        {
+            string password = PortableCredentialCrypto.Decrypt(destination.SftpPasswordEncrypted!, master);
+            string username = destination.SftpUsername ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(username)) return SftpCredentialLookup.NeedsReentry();
+            WindowsCredentialManager.SaveSftp(destination.Id, username, password);
+            WindowsCredentialManager.SaveMasterPassword(master);
+            return SftpCredentialLookup.Available(username, password);
+        }
+
+        /// <summary>Writes both portable authenticated ciphertext and the local OS cache.</summary>
+        public static void SavePortable(Destination destination, string username, string password, string masterPassword)
+        {
+            if (destination == null) throw new ArgumentNullException(nameof(destination));
+            destination.SftpUsername = username;
+            destination.SftpPasswordEncrypted = PortableCredentialCrypto.Encrypt(password, masterPassword);
+        }
+
+        /// <summary>Creates a local credential cache after the portable settings have been committed.</summary>
+        public static void CachePortable(Destination destination, string masterPassword)
+        {
+            string password = PortableCredentialCrypto.Decrypt(destination.SftpPasswordEncrypted!, masterPassword);
+            string username = destination.SftpUsername ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(username)) throw new InvalidOperationException("В portable записи не указано имя пользователя SFTP.");
+            WindowsCredentialManager.SaveSftp(destination.Id, username, password);
+        }
+
+        public static void ForgetLocalCredential(string destinationId)
+        {
+            WindowsCredentialManager.ForgetSftp(destinationId);
+            string sid = CurrentUserSid;
+            List<CredentialRecord> records = ReadRecords();
+            int removed = records.RemoveAll(record =>
+                string.Equals(record.DestinationId, destinationId, StringComparison.Ordinal) &&
+                string.Equals(record.UserSid, sid, StringComparison.OrdinalIgnoreCase));
+            if (removed > 0) WriteRecords(records);
+        }
+
+        public static string? GetLocalMasterPassword() => WindowsCredentialManager.ReadMasterPassword();
+        public static void SaveLocalMasterPassword(string password) => WindowsCredentialManager.SaveMasterPassword(password);
+
+        /// <summary>Forgets cached secrets on this Windows account only; portable ciphertext is not changed.</summary>
+        public static void ForgetLocal(IEnumerable<Destination> destinations)
+        {
+            foreach (Destination destination in (destinations ?? Enumerable.Empty<Destination>()).Where(d => d.Type == DestinationType.Sftp))
+                WindowsCredentialManager.ForgetSftp(destination.Id);
+            WindowsCredentialManager.ForgetMasterPassword();
+            foreach (string path in new[] { StorePath, StorePath + ".tmp", StorePath + ".bak" })
+                if (File.Exists(path)) File.Delete(path);
+        }
+
         /// <summary>
         /// Saves credentials for this destination and this Windows SID only. Saving
         /// another destination, or running as another SID, does not replace this entry.
@@ -82,6 +175,35 @@ namespace FolderTools.App
             records.Add(new CredentialRecord(destinationId, sid, Convert.ToBase64String(encrypted)));
             Array.Clear(encrypted, 0, encrypted.Length);
             WriteRecords(records);
+        }
+
+        /// <summary>Copies credentials locally when deriving a new destination from a saved one.</summary>
+        public static bool Copy(string sourceDestinationId, string targetDestinationId)
+        {
+            SftpCredentialLookup source = Get(sourceDestinationId);
+            if (source.State != SftpCredentialState.Available || source.Username == null || source.Password == null)
+            {
+                return false;
+            }
+
+            Save(targetDestinationId, source.Username, source.Password);
+            return true;
+        }
+
+        /// <summary>Copies portable credentials to a new SFTP folder and duplicates an available local cache.</summary>
+        public static bool Copy(Destination source, Destination target)
+        {
+            if (source == null) throw new ArgumentNullException(nameof(source));
+            if (target == null) throw new ArgumentNullException(nameof(target));
+            target.SftpUsername = source.SftpUsername;
+            target.SftpPasswordEncrypted = source.SftpPasswordEncrypted;
+            SftpCredentialLookup cached = GetCached(source);
+            if (cached.State == SftpCredentialState.Available && cached.Username != null && cached.Password != null)
+            {
+                WindowsCredentialManager.SaveSftp(target.Id, cached.Username, cached.Password);
+                return true;
+            }
+            return !string.IsNullOrWhiteSpace(target.SftpPasswordEncrypted);
         }
 
         /// <summary>

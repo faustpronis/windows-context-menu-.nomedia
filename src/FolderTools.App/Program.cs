@@ -165,7 +165,7 @@ namespace FolderTools.App
             SftpCredentialLookup credentials;
             try
             {
-                credentials = SftpCredentialStore.Get(destination.Id);
+                credentials = SftpCredentialStore.GetForUse(destination, settings.MasterPasswordHint, null);
             }
             catch (Exception ex)
             {
@@ -176,9 +176,9 @@ namespace FolderTools.App
             if (credentials.State != SftpCredentialState.Available)
             {
                 string reason = credentials.State == SftpCredentialState.NeedsReentry
-                    ? "Пароль SFTP не удалось расшифровать после смены компьютера или учётной записи Windows."
-                    : "Для этой учётной записи Windows пароль SFTP ещё не сохранён.";
-                ShowError(reason + "\n\nОткройте FolderTools → Настройки…, выберите SFTP-папку и введите пароль заново.");
+                    ? "Не удалось разблокировать переносимый пароль SFTP. Проверьте мастер-пароль или задайте пароль в настройках этой папки."
+                    : "Для этой SFTP-папки ещё не задан пароль.";
+                ShowError(reason + "\n\nОткройте FolderTools → Настройки… и измените параметры SFTP-папки.");
                 return 5;
             }
 

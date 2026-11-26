@@ -48,8 +48,11 @@ namespace FolderTools.Tests
                     new SftpEndpoint { Host = "10.0.0.8", Port = 22, HostKeyFingerprint = "SHA256:backup-key" }
                 },
                 SftpChmodExtensions = new List<string> { ".sh", ".py" },
-                SftpChmodMode = "0755"
+                SftpChmodMode = "0755",
+                SftpUsername = "backup-user",
+                SftpPasswordEncrypted = "ft1$600000$encrypted-test-payload"
             });
+            settings.MasterPasswordHint = "пароль из менеджера паролей";
 
             string json = SettingsStore.ToJson(settings).ToJson();
             FolderToolsSettings restored = SettingsStore.FromJson(JsonNode.Parse(json) as JsonObject);
@@ -64,8 +67,10 @@ namespace FolderTools.Tests
             Assert.Equal("SHA256:backup-key", destination.SftpFallbacks[0].HostKeyFingerprint);
             Assert.Equal(new[] { ".sh", ".py" }, destination.SftpChmodExtensions);
             Assert.Equal("0755", destination.SftpChmodMode);
-            Assert.DoesNotContain("password", json, System.StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain("username", json, System.StringComparison.OrdinalIgnoreCase);
+            Assert.Equal("backup-user", destination.SftpUsername);
+            Assert.Equal("ft1$600000$encrypted-test-payload", destination.SftpPasswordEncrypted);
+            Assert.Equal("пароль из менеджера паролей", restored.MasterPasswordHint);
+            Assert.DoesNotContain("cleartext-password", json, System.StringComparison.OrdinalIgnoreCase);
         }
 
         [Fact]
@@ -125,7 +130,9 @@ namespace FolderTools.Tests
                     new SftpEndpoint { Host = "backup.example", Port = 2222, HostKeyFingerprint = "SHA256:backup" }
                 },
                 SftpChmodExtensions = new List<string> { ".sh" },
-                SftpChmodMode = "0755"
+                SftpChmodMode = "0755",
+                SftpUsername = "portable-user",
+                SftpPasswordEncrypted = "encrypted-value"
             };
 
             Destination clone = original.Clone();
@@ -136,6 +143,8 @@ namespace FolderTools.Tests
             Assert.Equal(new[] { ".sh" }, original.SftpChmodExtensions);
             Assert.Equal("SHA256:backup", clone.SftpFallbacks[0].HostKeyFingerprint);
             Assert.Equal("0755", clone.SftpChmodMode);
+            Assert.Equal("portable-user", clone.SftpUsername);
+            Assert.Equal("encrypted-value", clone.SftpPasswordEncrypted);
         }
 
         [Fact]
@@ -301,12 +310,25 @@ namespace FolderTools.Tests
         [Fact]
         public void Clone_CopiesMiscOptions()
         {
-            var settings = new FolderToolsSettings { DeskEditPath = "d.exe", ShowSuccess = true };
+            var settings = new FolderToolsSettings { DeskEditPath = "d.exe", ShowSuccess = true, RemoteEngine = "bclone", MasterPasswordHint = "hint" };
 
             var clone = settings.Clone();
 
             Assert.Equal("d.exe", clone.DeskEditPath);
             Assert.True(clone.ShowSuccess);
+            Assert.Equal("bclone", clone.RemoteEngine);
+            Assert.Equal("hint", clone.MasterPasswordHint);
+        }
+
+        [Fact]
+        public void RemoteEngine_RoundTripsAndLegacyDefaultsToRclone()
+        {
+            var settings = new FolderToolsSettings { RemoteEngine = "bclone" };
+            var restored = SettingsStore.FromJson(SettingsStore.ToJson(settings));
+            var legacy = SettingsStore.FromJson(JsonNode.Parse("{}") as JsonObject);
+
+            Assert.Equal("bclone", restored.RemoteEngine);
+            Assert.Equal("rclone", legacy.RemoteEngine);
         }
 
         [Fact]

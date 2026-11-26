@@ -24,11 +24,19 @@ namespace FolderTools.App
         private readonly Label _hostKeyStatus = new Label();
         private SftpCredentialLookup _credentials;
         private bool _remoteBrowseSucceeded;
+        private readonly string? _masterPasswordOverride;
+        private readonly string? _masterPasswordHint;
+        private readonly bool _hasExistingPortableCredentials;
 
-        public SftpDestinationForm(Destination destination)
+        public string? MasterPasswordUsed { get; private set; }
+
+        public SftpDestinationForm(Destination destination, string? masterPasswordOverride = null, string? masterPasswordHint = null, bool hasExistingPortableCredentials = false)
         {
             _destination = destination ?? throw new ArgumentNullException(nameof(destination));
             _editedDestination = destination.Clone();
+            _masterPasswordOverride = masterPasswordOverride;
+            _masterPasswordHint = masterPasswordHint;
+            _hasExistingPortableCredentials = hasExistingPortableCredentials;
             _credentials = LookupCredentials();
 
             Text = "FolderTools — SFTP-получатель";
@@ -186,7 +194,9 @@ namespace FolderTools.App
                 .Select(e => FormatEndpoint(e, primaryPort))
                 .ToArray();
             _remotePath.Text = _editedDestination.SftpRemotePath ?? string.Empty;
-            _username.Text = _credentials.State == SftpCredentialState.Available ? _credentials.Username ?? string.Empty : string.Empty;
+            _username.Text = _credentials.State == SftpCredentialState.Available
+                ? _credentials.Username ?? string.Empty
+                : _editedDestination.SftpUsername ?? string.Empty;
             _chmodExtensions.Text = string.Join(", ", _editedDestination.SftpChmodExtensions ?? new List<string>());
             _chmodMode.Text = string.IsNullOrWhiteSpace(_editedDestination.SftpChmodMode) ? "0644" : _editedDestination.SftpChmodMode;
             _hostKeyStatus.Text = string.IsNullOrWhiteSpace(_editedDestination.SftpHostKeyFingerprint)
@@ -210,7 +220,7 @@ namespace FolderTools.App
         {
             try
             {
-                return SftpCredentialStore.Get(_destination.Id);
+                return SftpCredentialStore.GetCached(_destination);
             }
             catch (Exception)
             {
@@ -227,8 +237,16 @@ namespace FolderTools.App
                     _credentialStatus.ForeColor = Color.FromArgb(0, 110, 0);
                     break;
                 case SftpCredentialState.NeedsReentry:
-                    _credentialStatus.Text = "Пароль нельзя расшифровать. Введите его заново для этой учётной записи/компьютера.";
-                    _credentialStatus.ForeColor = Color.DarkRed;
+                    if (!string.IsNullOrWhiteSpace(_editedDestination.SftpPasswordEncrypted))
+                    {
+                        _credentialStatus.Text = "Зашифрован в конфиге; локальный кэш будет создан при первом разблокировании.";
+                        _credentialStatus.ForeColor = Color.FromArgb(0, 90, 130);
+                    }
+                    else
+                    {
+                        _credentialStatus.Text = "Старый пароль не найден в локальном хранилище. Введите его для миграции.";
+                        _credentialStatus.ForeColor = Color.DarkRed;
+                    }
                     break;
                 default:
                     _credentialStatus.Text = "Не задан. Введите пароль для сохранения подключения.";
@@ -344,12 +362,9 @@ namespace FolderTools.App
             try
             {
                 Destination edited = GetEditedDestination();
-                string username = _username.Text.Trim();
-                string password = _password.Text;
-                if (password.Length == 0 && _credentials.State == SftpCredentialState.Available)
-                {
-                    password = _credentials.Password ?? string.Empty;
-                }
+                SftpCredentialLookup credentials = ResolveCredentialsForAction();
+                string username = credentials.Username ?? _username.Text.Trim();
+                string password = credentials.Password ?? string.Empty;
 
                 using (SftpDirectoryBrowserSession session = SftpTransferService.OpenDirectoryBrowser(
                     edited,
@@ -401,12 +416,9 @@ namespace FolderTools.App
             try
             {
                 Destination edited = GetEditedDestination();
-                string username = _username.Text.Trim();
-                string password = _password.Text;
-                if (password.Length == 0 && _credentials.State == SftpCredentialState.Available)
-                {
-                    password = _credentials.Password ?? string.Empty;
-                }
+                SftpCredentialLookup credentials = ResolveCredentialsForAction();
+                string username = credentials.Username ?? _username.Text.Trim();
+                string password = credentials.Password ?? string.Empty;
 
                 SftpConnectionTestReport report = SftpTransferService.TestConnectionDetailed(
                     edited, username, password, ConfirmUnknownHostKey);
@@ -443,6 +455,16 @@ namespace FolderTools.App
             {
                 MessageBox.Show(this, "Не удалось проверить SFTP-подключение:\n" + ex.Message, "FolderTools", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
+        }
+
+        private SftpCredentialLookup ResolveCredentialsForAction()
+        {
+            string username = _username.Text.Trim();
+            if (_password.Text.Length > 0)
+                return SftpCredentialLookup.Available(username, _password.Text);
+            if (_credentials.State == SftpCredentialState.Available)
+                return _credentials;
+            return SftpCredentialStore.GetForUse(_editedDestination, _masterPasswordHint, this);
         }
 
         private static string FormatConnectionTestReport(SftpConnectionTestReport report)
@@ -498,24 +520,54 @@ namespace FolderTools.App
                 return;
             }
 
-            bool usernameChanged = _credentials.State == SftpCredentialState.Available &&
-                !string.Equals(_username.Text.Trim(), _credentials.Username, StringComparison.Ordinal);
-            if (_password.Text.Length > 0)
+            bool usernameChanged = !string.Equals(_username.Text.Trim(), _editedDestination.SftpUsername ?? _credentials.Username, StringComparison.Ordinal);
+            bool portableExists = !string.IsNullOrWhiteSpace(edited.SftpPasswordEncrypted);
+            bool needsPortableWrite = _password.Text.Length > 0 || usernameChanged ||
+                                      (!portableExists && _credentials.State == SftpCredentialState.Available);
+            if (needsPortableWrite)
             {
+                string password = _password.Text;
+                if (password.Length == 0 && !usernameChanged && _credentials.State == SftpCredentialState.Available)
+                    password = _credentials.Password ?? string.Empty;
+                if (password.Length == 0)
+                {
+                    MessageBox.Show(this, "Введите пароль для выбранного имени пользователя.", "FolderTools", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                string? masterPassword = _masterPasswordOverride ?? SftpCredentialStore.GetLocalMasterPassword();
+                if (masterPassword == null)
+                {
+                    if (_hasExistingPortableCredentials)
+                    {
+                        MessageBox.Show(this,
+                            "В конфиге уже есть переносимые записи. Сначала разблокируйте их или измените мастер-пароль на вкладке «Прочее», чтобы не создать записи с разными паролями.",
+                            "FolderTools", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+                    masterPassword = MasterPasswordEntryForm.Prompt(this, null,
+                        "Введите новый мастер-пароль. Для управления им и подсказкой откройте вкладку «Прочее».");
+                }
+                if (masterPassword == null) return;
                 try
                 {
-                    SftpCredentialStore.Save(edited.Id, _username.Text.Trim(), _password.Text);
+                    SftpCredentialStore.SavePortable(edited, _username.Text.Trim(), password, masterPassword);
+                    MasterPasswordUsed = masterPassword;
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(this, "Не удалось сохранить пароль:\n" + ex.Message, "FolderTools", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show(this, "Не удалось зашифровать или сохранить пароль:\n" + ex.Message, "FolderTools", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
                 }
             }
-            else if (_credentials.State != SftpCredentialState.Available || usernameChanged)
+            else if (!portableExists && _credentials.State != SftpCredentialState.Available)
             {
-                MessageBox.Show(this, "Введите пароль для текущего имени пользователя. Без него сохранённые учётные данные нельзя безопасно изменить.", "FolderTools", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(this, "Введите пароль для текущего имени пользователя.", "FolderTools", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
+            }
+            else if (!usernameChanged)
+            {
+                edited.SftpUsername = _username.Text.Trim();
             }
 
             if (_destination.Patterns.Count == 0)
@@ -534,6 +586,8 @@ namespace FolderTools.App
             _destination.SftpFallbacks = edited.SftpFallbacks;
             _destination.SftpChmodExtensions = edited.SftpChmodExtensions;
             _destination.SftpChmodMode = edited.SftpChmodMode;
+            _destination.SftpUsername = edited.SftpUsername;
+            _destination.SftpPasswordEncrypted = edited.SftpPasswordEncrypted;
 
             DialogResult = DialogResult.OK;
             Close();

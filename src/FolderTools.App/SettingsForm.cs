@@ -21,6 +21,8 @@ namespace FolderTools.App
         private FolderToolsSettings _working;
         private readonly ListBox _destinations = new ListBox();
         private readonly ListBox _remoteConnections = new ListBox();
+        private readonly ComboBox _remoteEngine = new ComboBox();
+        private readonly Label _remoteEngineStatus = new Label();
         private readonly ListBox _patterns = new ListBox();
         private readonly ComboBox _categories = new ComboBox();
         private readonly TextBox _name = new TextBox();
@@ -31,6 +33,8 @@ namespace FolderTools.App
         private readonly TextBox _deskEditPath = new TextBox();
         private readonly Button _browseFolder = new Button();
         private readonly CheckBox _showSuccess = new CheckBox();
+        private string? _pendingMasterPassword;
+        private readonly HashSet<string> _stagedCredentialIds = new HashSet<string>(StringComparer.Ordinal);
         private readonly Label _hint = new Label();
         private bool _loading;
 
@@ -53,6 +57,16 @@ namespace FolderTools.App
             LoadDestinations();
             LoadMisc();
             NotifyMissingSftpCredentials();
+            FormClosed += (sender, args) =>
+            {
+                if (DialogResult == DialogResult.OK) return;
+                foreach (string id in _stagedCredentialIds)
+                {
+                    try { SftpCredentialStore.ForgetLocalCredential(id); }
+                    catch (Exception) { }
+                }
+                _stagedCredentialIds.Clear();
+            };
         }
 
         private void NotifyMissingSftpCredentials()
@@ -70,7 +84,8 @@ namespace FolderTools.App
             {
                 try
                 {
-                    if (SftpCredentialStore.Get(destination.Id).State != SftpCredentialState.Available)
+                    bool hasPortableSecret = !string.IsNullOrWhiteSpace(destination.SftpPasswordEncrypted);
+                    if (!hasPortableSecret && SftpCredentialStore.GetCached(destination).State != SftpCredentialState.Available)
                     {
                         missing++;
                     }
@@ -85,8 +100,7 @@ namespace FolderTools.App
             {
                 MessageBox.Show(
                     this,
-                    missing + " SFTP-подключений требуют пароля для текущей учётной записи Windows. " +
-                    "После переноса программы на новый компьютер или смены учётной записи введите пароли заново.",
+                    missing + " старых SFTP-подключений требуют ввода пароля. Новые portable-записи можно разблокировать мастер-паролем на любом компьютере.",
                     "Обновите пароли SFTP",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Warning);
@@ -302,22 +316,150 @@ namespace FolderTools.App
             buttons.Controls.Add(MakeButton("Изменить…", EditRemoteConnection));
             buttons.Controls.Add(MakeButton("Test connection", TestRemoteConnection));
             buttons.Controls.Add(MakeButton("Удалить", RemoveRemoteConnection));
+            buttons.Controls.Add(new Label { Text = "Движок:", AutoSize = true, Margin = new Padding(4, 7, 2, 0) });
+            _remoteEngine.DropDownStyle = ComboBoxStyle.DropDownList;
+            _remoteEngine.Width = 100;
+            _remoteEngine.Items.Add("rclone");
+            _remoteEngine.Items.Add("bclone");
+            _remoteEngine.SelectedIndex = string.Equals(_working.RemoteEngine, "bclone", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+            _remoteEngine.SelectedIndexChanged += (s, e) => ChangeRemoteEngine();
+            buttons.Controls.Add(_remoteEngine);
+            buttons.Controls.Add(MakeButton("Установить / обновить", InstallRemoteEngine));
+            buttons.Controls.Add(MakeButton("Backend-ы…", ShowSupportedRemoteProviders));
+            buttons.Controls.Add(MakeButton("Проверить настроенные", TestConfiguredRemoteBackends));
+            _remoteEngineStatus.AutoSize = true;
+            _remoteEngineStatus.Margin = new Padding(3, 7, 0, 0);
+            buttons.Controls.Add(_remoteEngineStatus);
 
             var note = new Label
             {
                 Dock = DockStyle.Top,
                 AutoSize = false,
-                Height = 48,
+                Height = 82,
                 Text = "Здесь собраны отдельные SFTP-подключения получателей. Настройки пароля " +
                        "и удалённой папки открываются двойным щелчком или кнопкой «Изменить».\r\n" +
-                       "В будущем здесь можно будет настраивать облачные службы через rclone.",
+                       "Для облачных служб выбранный движок: " + _working.RemoteEngine + ". Список backend-ов и тест настроенных подключений берутся из выбранного бинарника; конфиги раздельные и лежат рядом с программой. bclone — неофициальный форк; уникальные backend-ы могут быть недоступны после перехода на rclone.",
                 ForeColor = Color.FromArgb(70, 70, 70)
             };
 
             page.Controls.Add(_remoteConnections);
             page.Controls.Add(buttons);
             page.Controls.Add(note);
+            RefreshRemoteEngineStatus();
             return page;
+        }
+
+        private RemoteEngine SelectedRemoteEngine => _remoteEngine.SelectedIndex == 1 ? RemoteEngine.Bclone : RemoteEngine.Rclone;
+
+        private void ChangeRemoteEngine()
+        {
+            string previous = _working.RemoteEngine;
+            string current = SelectedRemoteEngine == RemoteEngine.Bclone ? "bclone" : "rclone";
+            _working.RemoteEngine = current;
+            RefreshRemoteEngineStatus();
+            if (string.Equals(previous, "bclone", StringComparison.OrdinalIgnoreCase) && current == "rclone")
+            {
+                MessageBox.Show(this,
+                    "Переход на rclone не удалит bclone и его конфиг, но rclone не знает о дополнительных backend-ах форка (например, Terabox и некоторых других). Такие подключения могут не работать до переключения обратно на bclone или ручного переноса в поддерживаемый backend.",
+                    "FolderTools — смена движка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            else if (current == "bclone" && !string.Equals(previous, "bclone", StringComparison.OrdinalIgnoreCase))
+            {
+                MessageBox.Show(this,
+                    "bclone — неофициальный форк rclone. Поддержка его дополнительных backend-ов зависит от сопровождающего проекта. Конфиг bclone хранится отдельно от конфига rclone.",
+                    "FolderTools — bclone", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        }
+
+        private void RefreshRemoteEngineStatus()
+        {
+            string engine = SelectedRemoteEngine == RemoteEngine.Rclone ? "rclone" : "bclone";
+            try
+            {
+                _remoteEngineStatus.Text = engine + ": " + RcloneBackendManager.GetVersion(SelectedRemoteEngine);
+            }
+            catch (Exception ex)
+            {
+                _remoteEngineStatus.Text = engine + ": " + ex.Message;
+            }
+        }
+
+        private void InstallRemoteEngine()
+        {
+            RemoteEngine engine = SelectedRemoteEngine;
+            string name = engine == RemoteEngine.Rclone ? "rclone" : "bclone";
+            try
+            {
+                UseWaitCursor = true;
+                RcloneBackendManager.InstallOrUpdate(engine);
+                RefreshRemoteEngineStatus();
+                MessageBox.Show(this, name + " установлен/обновлён. Версия: " + RcloneBackendManager.GetVersion(engine),
+                    "FolderTools — Remote", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Не удалось установить или обновить " + name + ":\r\n" + ex.Message,
+                    "FolderTools — Remote", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                RefreshRemoteEngineStatus();
+            }
+            finally
+            {
+                UseWaitCursor = false;
+            }
+        }
+
+        private string? AskRemoteConfigPassword()
+        {
+            string engineName = SelectedRemoteEngine == RemoteEngine.Rclone ? "rclone" : "bclone";
+            using (var form = new RemoteConfigPasswordForm(engineName))
+            {
+                return form.ShowDialog(this) == DialogResult.OK ? form.Password : null;
+            }
+        }
+
+        private void ShowSupportedRemoteProviders()
+        {
+            string? password = AskRemoteConfigPassword();
+            if (password == null) return;
+            try
+            {
+                IReadOnlyList<RemoteProviderInfo> providers = RcloneBackendManager.GetProviders(SelectedRemoteEngine, password);
+                string engineName = SelectedRemoteEngine == RemoteEngine.Rclone ? "rclone" : "bclone";
+                using (var form = new RemoteProviderCatalogForm(engineName, providers))
+                {
+                    form.ShowDialog(this);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Не удалось получить список backend-ов:\r\n" + ex.Message,
+                    "FolderTools — Remote", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        private void TestConfiguredRemoteBackends()
+        {
+            string? password = AskRemoteConfigPassword();
+            if (password == null) return;
+            try
+            {
+                UseWaitCursor = true;
+                IReadOnlyList<RemoteTestResult> results = RcloneBackendManager.TestConfiguredRemotes(SelectedRemoteEngine, password);
+                string message = string.Join("\r\n\r\n", results.Select(result =>
+                    (result.Success ? "OK" : "Ошибка") + " — " + result.Remote + ":\r\n" + result.Message));
+                bool allSucceeded = results.All(result => result.Success);
+                MessageBox.Show(this, message, "Проверка " + (SelectedRemoteEngine == RemoteEngine.Rclone ? "rclone" : "bclone"),
+                    MessageBoxButtons.OK, allSucceeded ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Не удалось проверить настроенные подключения:\r\n" + ex.Message,
+                    "FolderTools — Remote", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            finally
+            {
+                UseWaitCursor = false;
+            }
         }
 
         private TabPage BuildCategoriesPage()
@@ -438,11 +580,23 @@ namespace FolderTools.App
             menuButtons.Controls.Add(MakeButton("Удалить меню", UninstallMenu));
             layout.Controls.Add(menuButtons, 1, 2);
 
+            layout.Controls.Add(new Label { Text = "Мастер-пароль SFTP:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 3);
+            var credentialButtons = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                AutoSize = true,
+                WrapContents = true,
+                Padding = new Padding(0, 2, 0, 2)
+            };
+            credentialButtons.Controls.Add(MakeButton("Задать / изменить пароль и подсказку", ManageMasterPassword));
+            credentialButtons.Controls.Add(MakeButton("Забыть на этом компьютере", ForgetLocalCredentials));
+            layout.Controls.Add(credentialButtons, 1, 3);
+
             var note = new Label
             {
                 Dock = DockStyle.Top,
                 AutoSize = false,
-                Height = 112,
+                Height = 190,
                 Padding = new Padding(0, 12, 0, 0),
                 ForeColor = Color.FromArgb(80, 80, 80),
                 Text = "Все настройки хранятся в файле " + SettingsStore.FileName
@@ -453,7 +607,9 @@ namespace FolderTools.App
                      + "Установка и удаление меню доступны выше; очистка старых пунктов заново "
                      + "регистрирует FolderTools и убирает отдельные «Копировать в» / «Переместить в».\r\n"
                      + "Поле DeskEdit можно оставить пустым: тогда программа ищет "
-                     + "DeskEdit.exe рядом с собой и в C:\\Tools\\DeskEdit."
+                     + "DeskEdit.exe рядом с собой и в C:\\Tools\\DeskEdit.\r\n"
+                     + "Зашифрованные пароли лежат в переносимом конфиге; расшифрованные данные и master password — только в Credential Manager этой учётной записи Windows. «Забыть» удаляет локальный кэш только здесь; общего списка устройств нет.\r\n"
+                     + "Синхронизируйте FolderTools.settings.json своим клиентом и не редактируйте настройки одновременно на нескольких компьютерах. Программа не объединяет конфликты синхронизации. Смена мастер-пароля не отзывает уже скопированные конфиги или локальные кэши: на других устройствах их нужно забыть отдельно."
             };
 
             page.Controls.Add(layout);
@@ -588,6 +744,97 @@ namespace FolderTools.App
             _showSuccess.Checked = AppConfig.ShowSuccess;
         }
 
+        private void ManageMasterPassword()
+        {
+            Destination[] sftp = _working.Destinations.Where(d => d.Type == DestinationType.Sftp).ToArray();
+            bool hasEncrypted = sftp.Any(d => !string.IsNullOrWhiteSpace(d.SftpPasswordEncrypted));
+            using (var form = new MasterPasswordSetupForm(_working.MasterPasswordHint, hasEncrypted))
+            {
+                if (form.ShowDialog(this) != DialogResult.OK) return;
+                if (form.NewPassword.Length < 12)
+                {
+                    MessageBox.Show(this, "Используйте не менее 12 символов для мастер-пароля.", "FolderTools", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                if (!string.Equals(form.NewPassword, form.Confirmation, StringComparison.Ordinal))
+                {
+                    MessageBox.Show(this, "Повторный ввод мастер-пароля не совпадает.", "FolderTools", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                var prepared = new List<Tuple<Destination, string, string>>();
+                try
+                {
+                    foreach (Destination destination in sftp)
+                    {
+                        string? username = destination.SftpUsername;
+                        string? password = null;
+                        if (!string.IsNullOrWhiteSpace(destination.SftpPasswordEncrypted))
+                        {
+                            password = PortableCredentialCrypto.Decrypt(destination.SftpPasswordEncrypted!, form.CurrentPassword);
+                        }
+                        else
+                        {
+                            SftpCredentialLookup cached = SftpCredentialStore.GetCached(destination);
+                            if (cached.State == SftpCredentialState.Available)
+                            {
+                                username = cached.Username;
+                                password = cached.Password;
+                            }
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(username) && password != null)
+                            prepared.Add(Tuple.Create(destination, username!, password));
+                    }
+                }
+                catch (System.Security.Cryptography.CryptographicException ex)
+                {
+                    MessageBox.Show(this, "Не удалось проверить текущий мастер-пароль. Ничего не изменено.\r\n" + ex.Message,
+                        "FolderTools", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                var encrypted = new List<Tuple<Destination, string, string>>();
+                foreach (Tuple<Destination, string, string> item in prepared)
+                {
+                    encrypted.Add(Tuple.Create(item.Item1, item.Item2,
+                        PortableCredentialCrypto.Encrypt(item.Item3, form.NewPassword)));
+                }
+                foreach (Tuple<Destination, string, string> item in encrypted)
+                {
+                    item.Item1.SftpUsername = item.Item2;
+                    item.Item1.SftpPasswordEncrypted = item.Item3;
+                }
+
+                _working.MasterPasswordHint = form.Hint;
+                _pendingMasterPassword = form.NewPassword;
+                MessageBox.Show(this,
+                    "Мастер-пароль и зашифрованные записи подготовлены. Они будут сохранены вместе с настройками после нажатия «Сохранить».",
+                    "FolderTools", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        }
+
+        private void ForgetLocalCredentials()
+        {
+            if (MessageBox.Show(this,
+                    "Удалить локальные кэши SFTP и мастер-пароль только из Credential Manager этой учётной записи Windows? " +
+                    "Зашифрованный конфиг не изменится. Кэши на других компьютерах эта операция не затронет.",
+                    "Забыть пароли на этом компьютере", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+                return;
+            try
+            {
+                SftpCredentialStore.ForgetLocal(_working.Destinations);
+                _pendingMasterPassword = null;
+                MessageBox.Show(this, "Локальный кэш удалён. При следующем использовании SFTP потребуется разблокировать конфиг.",
+                    "FolderTools", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Не удалось забыть локальные учётные данные:\r\n" + ex.Message,
+                    "FolderTools", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
         private void LoadDestinations()
         {
             _loading = true;
@@ -649,6 +896,9 @@ namespace FolderTools.App
             return index >= 0 && index < connections.Length ? connections[index] : null;
         }
 
+        private bool HasPortableSftpCredentials => _working.Destinations.Any(d =>
+            d.Type == DestinationType.Sftp && !string.IsNullOrWhiteSpace(d.SftpPasswordEncrypted));
+
         private void EditRemoteConnection()
         {
             Destination? destination = SelectedRemoteConnection();
@@ -657,10 +907,11 @@ namespace FolderTools.App
                 return;
             }
 
-            using (var form = new SftpDestinationForm(destination))
+            using (var form = new SftpDestinationForm(destination, _pendingMasterPassword, _working.MasterPasswordHint, HasPortableSftpCredentials))
             {
                 if (form.ShowDialog(this) == DialogResult.OK)
                 {
+                    _pendingMasterPassword = form.MasterPasswordUsed ?? _pendingMasterPassword;
                     LoadDestinations();
                 }
             }
@@ -695,7 +946,7 @@ namespace FolderTools.App
                 return;
             }
 
-            using (var form = new SftpDestinationForm(destination))
+            using (var form = new SftpDestinationForm(destination, _pendingMasterPassword, _working.MasterPasswordHint, HasPortableSftpCredentials))
             {
                 form.RunConnectionTestFromManager();
             }
@@ -895,12 +1146,49 @@ namespace FolderTools.App
                 SftpPort = 22
             };
 
-            using (var form = new SftpDestinationForm(destination))
+            Destination[] savedSftp = _working.Destinations
+                .Where(item => item.Type == DestinationType.Sftp)
+                .ToArray();
+            if (savedSftp.Length > 0)
+            {
+                using (var picker = new SftpConnectionPickerForm(savedSftp))
+                {
+                    DialogResult choice = picker.ShowDialog(this);
+                    if (choice == DialogResult.Cancel)
+                    {
+                        return;
+                    }
+
+                    if (choice == DialogResult.OK && picker.SelectedConnection != null)
+                    {
+                        Destination source = picker.SelectedConnection;
+                        destination.SftpHost = source.SftpHost;
+                        destination.SftpPort = source.SftpPort;
+                        destination.SftpFallbacks = (source.SftpFallbacks ?? new List<SftpEndpoint>())
+                            .Select(endpoint => endpoint.Clone()).ToList();
+                        destination.SftpHostKeyFingerprint = source.SftpHostKeyFingerprint;
+                        if (SftpCredentialStore.Copy(source, destination))
+                        {
+                            _stagedCredentialIds.Add(destination.Id);
+                        }
+                        else
+                        {
+                            MessageBox.Show(this,
+                                "Параметры сервера скопированы, но у этого профиля нет переносимого пароля. " +
+                                "Введите пароль при настройке новой папки.",
+                                "FolderTools", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        }
+                    }
+                }
+            }
+
+            using (var form = new SftpDestinationForm(destination, _pendingMasterPassword, _working.MasterPasswordHint, HasPortableSftpCredentials))
             {
                 if (form.ShowDialog(this) != DialogResult.OK)
                 {
                     return;
                 }
+                _pendingMasterPassword = form.MasterPasswordUsed ?? _pendingMasterPassword;
             }
 
             _working.Destinations.Add(destination);
@@ -923,10 +1211,11 @@ namespace FolderTools.App
                 return;
             }
 
-            using (var form = new SftpDestinationForm(destination))
+            using (var form = new SftpDestinationForm(destination, _pendingMasterPassword, _working.MasterPasswordHint, HasPortableSftpCredentials))
             {
                 if (form.ShowDialog(this) == DialogResult.OK)
                 {
+                    _pendingMasterPassword = form.MasterPasswordUsed ?? _pendingMasterPassword;
                     LoadDestinations();
                 }
             }
@@ -1057,7 +1346,7 @@ namespace FolderTools.App
                 return;
             }
 
-            using (var form = new SftpDestinationForm(destination))
+            using (var form = new SftpDestinationForm(destination, _pendingMasterPassword, _working.MasterPasswordHint, HasPortableSftpCredentials))
             {
                 if (form.BrowseRemoteFolderFromManager())
                 {
@@ -1143,6 +1432,8 @@ namespace FolderTools.App
                 ? string.Empty
                 : AppPaths.ToStored(BaseDirectory, _deskEditPath.Text);
             _working.ShowSuccess = _showSuccess.Checked;
+            string? savedHint = _working.MasterPasswordHint;
+            _working.MasterPasswordHint = string.IsNullOrWhiteSpace(savedHint) ? null : savedHint!.Trim();
 
             try
             {
@@ -1156,6 +1447,66 @@ namespace FolderTools.App
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
                 return;
+            }
+
+            string? pendingMasterPassword = _pendingMasterPassword;
+            if (!string.IsNullOrWhiteSpace(pendingMasterPassword))
+            {
+                try
+                {
+                    SftpCredentialStore.SaveLocalMasterPassword(pendingMasterPassword!);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this,
+                        "Настройки сохранены, но мастер-пароль не удалось сохранить локально. При следующем использовании его нужно будет ввести снова.\r\n" + ex.Message,
+                        "FolderTools", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+            }
+
+            string? cacheMasterPassword = pendingMasterPassword ?? SftpCredentialStore.GetLocalMasterPassword();
+            if (!string.IsNullOrWhiteSpace(cacheMasterPassword))
+            {
+                foreach (Destination destination in _working.Destinations.Where(d =>
+                             d.Type == DestinationType.Sftp && !string.IsNullOrWhiteSpace(d.SftpPasswordEncrypted)))
+                {
+                    Destination? previous = _original.Destinations.FirstOrDefault(d =>
+                        string.Equals(d.Id, destination.Id, StringComparison.Ordinal));
+                    if (previous != null && string.Equals(previous.SftpPasswordEncrypted, destination.SftpPasswordEncrypted, StringComparison.Ordinal))
+                        continue;
+                    try
+                    {
+                        SftpCredentialStore.CachePortable(destination, cacheMasterPassword!);
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show(this,
+                            "Настройки сохранены, но локальный кэш «" + destination.DisplayName + "» не обновлён. Пароль будет запрошен при первом использовании.\r\n" + ex.Message,
+                            "FolderTools", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    }
+                }
+            }
+
+            foreach (Destination removed in _original.Destinations.Where(d => d.Type == DestinationType.Sftp &&
+                         !_working.Destinations.Any(current => string.Equals(current.Id, d.Id, StringComparison.Ordinal))))
+            {
+                try { SftpCredentialStore.ForgetLocalCredential(removed.Id); }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this,
+                        "Настройки сохранены, но локальный секрет удалённого SFTP-получателя «" + removed.DisplayName + "» не удалось очистить.\r\n" + ex.Message,
+                        "FolderTools", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+            }
+
+            foreach (string id in _stagedCredentialIds.ToArray())
+            {
+                if (!_working.Destinations.Any(d => string.Equals(d.Id, id, StringComparison.Ordinal)))
+                {
+                    try { SftpCredentialStore.ForgetLocalCredential(id); }
+                    catch (Exception) { }
+                    _stagedCredentialIds.Remove(id);
+                }
             }
 
             DialogResult = DialogResult.OK;

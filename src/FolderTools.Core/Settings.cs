@@ -89,6 +89,12 @@ namespace FolderTools.Core
         /// <summary>Unix permission mode in octal notation, e.g. 0644 or 0755.</summary>
         public string SftpChmodMode { get; set; }
 
+        /// <summary>Username may travel with the portable config; the password never does in clear text.</summary>
+        public string? SftpUsername { get; set; }
+
+        /// <summary>Authenticated, master-password-encrypted portable SFTP password payload.</summary>
+        public string? SftpPasswordEncrypted { get; set; }
+
         public string EffectivePath => Type == DestinationType.Sftp
             ? (SftpRemotePath ?? string.Empty)
             : (Path ?? string.Empty);
@@ -151,7 +157,9 @@ namespace FolderTools.Core
                 SftpHostKeyFingerprint = SftpHostKeyFingerprint,
                 SftpFallbacks = (SftpFallbacks ?? new List<SftpEndpoint>()).Select(e => e.Clone()).ToList(),
                 SftpChmodExtensions = new List<string>(SftpChmodExtensions ?? new List<string>()),
-                SftpChmodMode = SftpChmodMode
+                SftpChmodMode = SftpChmodMode,
+                SftpUsername = SftpUsername,
+                SftpPasswordEncrypted = SftpPasswordEncrypted
             };
         }
     }
@@ -188,6 +196,7 @@ namespace FolderTools.Core
         {
             Categories = new List<DestinationCategory>();
             Destinations = new List<Destination>();
+            RemoteEngine = "rclone";
         }
 
         /// <summary>Schema marker so a future version can migrate an old file.</summary>
@@ -206,6 +215,12 @@ namespace FolderTools.Core
         /// <summary>Whether a confirmation is shown after a successful transfer.</summary>
         public bool ShowSuccess { get; set; }
 
+        /// <summary>Selected optional cloud backend engine; values are "rclone" or "bclone".</summary>
+        public string RemoteEngine { get; set; }
+
+        /// <summary>Optional reminder for the master password. It is not secret and is not used as key material.</summary>
+        public string? MasterPasswordHint { get; set; }
+
         public FolderToolsSettings Clone()
         {
             return new FolderToolsSettings
@@ -214,7 +229,9 @@ namespace FolderTools.Core
                 Categories = Categories.Select(c => c.Clone()).ToList(),
                 Destinations = Destinations.Select(d => d.Clone()).ToList(),
                 DeskEditPath = DeskEditPath,
-                ShowSuccess = ShowSuccess
+                ShowSuccess = ShowSuccess,
+                MasterPasswordHint = MasterPasswordHint,
+                RemoteEngine = RemoteEngine
             };
         }
 

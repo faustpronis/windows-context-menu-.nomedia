@@ -155,6 +155,14 @@ namespace FolderTools.Core
                     entry.Add("sftpFallbacks", fallbacks)
                         .Add("sftpChmodExtensions", destination.SftpChmodExtensions ?? new List<string>())
                         .Add("sftpChmodMode", string.IsNullOrWhiteSpace(destination.SftpChmodMode) ? "0644" : destination.SftpChmodMode);
+                    if (!string.IsNullOrWhiteSpace(destination.SftpUsername))
+                    {
+                        entry.Add("sftpUsername", destination.SftpUsername);
+                    }
+                    if (!string.IsNullOrWhiteSpace(destination.SftpPasswordEncrypted))
+                    {
+                        entry.Add("sftpPasswordEncrypted", destination.SftpPasswordEncrypted);
+                    }
                 }
 
                 destinations.Add(entry);
@@ -163,7 +171,8 @@ namespace FolderTools.Core
             var root = new JsonObject()
                 .Add("schemaVersion", settings.SchemaVersion)
                 .Add("categories", categories)
-                .Add("destinations", destinations);
+                .Add("destinations", destinations)
+                .Add("remoteEngine", string.Equals(settings.RemoteEngine, "bclone", StringComparison.OrdinalIgnoreCase) ? "bclone" : "rclone");
 
             if (!string.IsNullOrWhiteSpace(settings.DeskEditPath))
             {
@@ -173,6 +182,10 @@ namespace FolderTools.Core
             if (settings.ShowSuccess)
             {
                 root.Add("showSuccess", true);
+            }
+            if (!string.IsNullOrWhiteSpace(settings.MasterPasswordHint))
+            {
+                root.Add("masterPasswordHint", settings.MasterPasswordHint);
             }
 
             return root;
@@ -193,6 +206,8 @@ namespace FolderTools.Core
             settings.SchemaVersion = root.GetInt("schemaVersion", 1);
             settings.DeskEditPath = root.GetString("deskEditPath");
             settings.ShowSuccess = root.GetBool("showSuccess", false);
+            settings.RemoteEngine = string.Equals(root.GetString("remoteEngine"), "bclone", StringComparison.OrdinalIgnoreCase) ? "bclone" : "rclone";
+            settings.MasterPasswordHint = root.GetString("masterPasswordHint");
 
             JsonArray? categories = root.GetArray("categories");
             if (categories != null)
@@ -248,7 +263,9 @@ namespace FolderTools.Core
                         SftpHostKeyFingerprint = entry.GetString("sftpHostKeyFingerprint"),
                         SftpFallbacks = ReadSftpFallbacks(entry),
                         SftpChmodExtensions = ReadStringArray(entry.GetArray("sftpChmodExtensions")),
-                        SftpChmodMode = entry.GetString("sftpChmodMode") ?? "0644"
+                        SftpChmodMode = entry.GetString("sftpChmodMode") ?? "0644",
+                        SftpUsername = entry.GetString("sftpUsername"),
+                        SftpPasswordEncrypted = entry.GetString("sftpPasswordEncrypted")
                     };
                     settings.Destinations.Add(destination);
                 }
