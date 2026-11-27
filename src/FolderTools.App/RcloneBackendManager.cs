@@ -9,6 +9,7 @@ using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
+using FolderTools.Core;
 
 namespace FolderTools.App
 {
@@ -48,9 +49,8 @@ namespace FolderTools.App
     /// <summary>Manages the optional external rclone/bclone executable and its private config.</summary>
     internal static class RcloneBackendManager
     {
-        // `config providers` may exceed JavaScriptSerializer's default 2 MiB limit,
-        // especially in forks with additional backends. Keep parsing bounded while
-        // allowing the complete provider catalogue to be captured and deserialized.
+        // Provider catalogues can be large, especially in forks with additional
+        // backends. Keep captured process output bounded without corrupting JSON silently.
         private const int MaxCaptureBytes = 32 * 1024 * 1024;
 
         public static string RuntimeDirectory => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "remote-tools");
@@ -199,28 +199,27 @@ namespace FolderTools.App
                 throw new InvalidOperationException(FirstLine(result.Error.Length == 0 ? result.Output : result.Error));
             }
 
-            var serializer = new JavaScriptSerializer { MaxJsonLength = MaxCaptureBytes };
-            var root = serializer.DeserializeObject(result.Output) as IDictionary<string, object>;
-            if (root == null || !root.TryGetValue("Providers", out object? value) || !(value is object[] providers))
+            if (result.Output.IndexOf("[вывод ограничен]", StringComparison.Ordinal) >= 0)
             {
-                throw new InvalidDataException("Backend-ы не распознаны: rclone/bclone вернул неизвестный JSON-формат.");
+                throw new InvalidDataException("Список backend-ов от rclone/bclone превышает лимит захвата вывода (32 МиБ); JSON был усечён.");
             }
 
-            var parsed = new List<RemoteProviderInfo>();
-            foreach (object item in providers)
+            IReadOnlyList<RemoteProviderDefinition> providers;
+            try
             {
-                if (!(item is IDictionary<string, object> provider) || !provider.TryGetValue("Name", out object? nameValue))
-                {
-                    continue;
-                }
-                string name = Convert.ToString(nameValue, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
-                if (name.Length == 0) continue;
-                string description = provider.TryGetValue("Description", out object? descriptionValue)
-                    ? Convert.ToString(descriptionValue, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty
-                    : string.Empty;
-                parsed.Add(new RemoteProviderInfo(name, description));
+                providers = RemoteProviderCatalog.Parse(result.Output);
             }
-            return parsed.OrderBy(provider => provider.Name, StringComparer.OrdinalIgnoreCase).ToArray();
+            catch (JsonException)
+            {
+                string preview = string.Join(" ", result.Output.Split(new[] { '\r', '\n', '\t' }, StringSplitOptions.RemoveEmptyEntries));
+                if (preview.Length > 240) preview = preview.Substring(0, 240) + "…";
+                throw new InvalidDataException("Backend-ы не распознаны: формат JSON rclone/bclone неизвестен. Начало вывода: " + preview);
+            }
+
+            return providers
+                .Select(provider => new RemoteProviderInfo(provider.Name, provider.Description))
+                .OrderBy(provider => provider.Name, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
         }
 
         public static IReadOnlyList<RemoteTestResult> TestConfiguredRemotes(RemoteEngine engine, string? configPassword = null)
@@ -301,6 +300,7 @@ namespace FolderTools.App
             char[] buffer = new char[8192];
             int captured = 0;
             int count;
+            bool truncated = false;
             while ((count = await reader.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false)) > 0)
             {
                 int keep = Math.Min(count, MaxCaptureBytes - captured);
@@ -309,8 +309,9 @@ namespace FolderTools.App
                     output.Append(buffer, 0, keep);
                     captured += keep;
                 }
+                if (keep < count) truncated = true;
             }
-            if (captured >= MaxCaptureBytes) output.Append("\r\n[вывод ограничен]");
+            if (truncated) output.Append("\r\n[вывод ограничен]");
             return output.ToString();
         }
 
