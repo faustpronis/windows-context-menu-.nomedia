@@ -48,7 +48,10 @@ namespace FolderTools.App
     /// <summary>Manages the optional external rclone/bclone executable and its private config.</summary>
     internal static class RcloneBackendManager
     {
-        private const int MaxCaptureBytes = 1024 * 1024;
+        // `config providers` may exceed JavaScriptSerializer's default 2 MiB limit,
+        // especially in forks with additional backends. Keep parsing bounded while
+        // allowing the complete provider catalogue to be captured and deserialized.
+        private const int MaxCaptureBytes = 32 * 1024 * 1024;
 
         public static string RuntimeDirectory => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "remote-tools");
         public static string ConfigDirectory => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "remote-config");

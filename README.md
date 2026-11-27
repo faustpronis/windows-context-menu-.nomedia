@@ -53,7 +53,7 @@ D:\SHARE\SYNCTHING\
 ## Скачать
 
 Готовый бинарник лежит в [Releases](https://github.com/faustpronis/windows-context-menu-.nomedia/releases/latest):
-архив `FolderTools-<версия>.zip`. Текущая версия — **1.6.0**.
+архив `FolderTools-<версия>.zip`. Текущая версия — **1.7.0**.
 
 ## Установка
 
