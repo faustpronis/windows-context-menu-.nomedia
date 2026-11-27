@@ -189,6 +189,22 @@ namespace FolderTools.Tests
         }
 
         [Fact]
+        public void Build_SelectFolderIsAvailableOnlyForSftpDestinations()
+        {
+            var sftp = new Destination("remote-1", "Server", string.Empty, new[] { "*.sh" })
+            {
+                Type = DestinationType.Sftp,
+                SftpHost = "host.example",
+                SftpRemotePath = "/target"
+            };
+            var entries = DestinationMenuLayout.Build(Exe, SettingsWith(sftp));
+            Assert.Contains(entries, e => e.Value == "Выбрать папку");
+            Assert.Contains(entries, e => e.Value == "\"" + Exe + "\" selectfolder \"remote-1\" \"%1\"");
+            Assert.DoesNotContain(DestinationMenuLayout.Build(Exe,
+                SettingsWith(new Destination("local", "Local", @"D:\Local", new[] { "*.sh" }))), e => e.Value == "Выбрать папку");
+        }
+
+        [Fact]
         public void Build_GroupsCategorizedDestinationsUnderOneSubmenu()
         {
             var settings = new FolderToolsSettings();

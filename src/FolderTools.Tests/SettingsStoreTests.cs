@@ -74,6 +74,64 @@ namespace FolderTools.Tests
         }
 
         [Fact]
+        public void RoundTrip_KeepsSftpStartPathAndBookmarkMetadataPresets()
+        {
+            var settings = new FolderToolsSettings();
+            settings.Destinations.Add(new Destination("r", "Remote", string.Empty, new[] { "[папка]" })
+            {
+                Type = DestinationType.Sftp,
+                SftpStartPath = "/home/user",
+                SftpBookmarks = new List<SftpBookmark>
+                {
+                    new SftpBookmark
+                    {
+                        Id = "b1", Name = "Scripts", Path = "/opt/scripts", Category = "Deploy",
+                        FileMode = "0755", DirectoryMode = "0750", UserId = 1000, GroupId = 100
+                    },
+                    new SftpBookmark { Id = "b2", Name = "Archive", Path = "/archive", Category = "" }
+                }
+            });
+
+            FolderToolsSettings restored = SettingsStore.FromJson(SettingsStore.ToJson(settings));
+            Destination destination = Assert.Single(restored.Destinations);
+            Assert.Equal("/home/user", destination.SftpStartPath);
+            Assert.Equal(2, destination.SftpBookmarks.Count);
+            SftpBookmark bookmark = destination.SftpBookmarks[0];
+            Assert.Equal("Deploy", bookmark.Category);
+            Assert.Equal("0755", bookmark.FileMode);
+            Assert.Equal("0750", bookmark.DirectoryMode);
+            Assert.Equal(1000, bookmark.UserId);
+            Assert.Equal(100, bookmark.GroupId);
+            Assert.Null(destination.SftpBookmarks[1].FileMode);
+            Assert.Null(destination.SftpBookmarks[1].UserId);
+        }
+
+        [Fact]
+        public void LegacySftpJson_WithoutStartPathOrBookmarksUsesEmptyDefaults()
+        {
+            var root = JsonNode.Parse("{\"destinations\":[{\"type\":\"sftp\",\"sftpHost\":\"host\"}]}") as JsonObject;
+            Destination destination = Assert.Single(SettingsStore.FromJson(root).Destinations);
+            Assert.Null(destination.SftpStartPath);
+            Assert.Empty(destination.SftpBookmarks);
+        }
+
+        [Fact]
+        public void Clone_DeepCopiesSftpBookmarksAndStartPath()
+        {
+            var original = new Destination("r", "Remote", string.Empty, new string[0])
+            {
+                SftpStartPath = "/initial",
+                SftpBookmarks = new List<SftpBookmark> { new SftpBookmark { Name = "One", Path = "/one", UserId = 42 } }
+            };
+            Destination clone = original.Clone();
+            clone.SftpBookmarks[0].Path = "/changed";
+            clone.SftpBookmarks.Add(new SftpBookmark { Name = "Two", Path = "/two" });
+            Assert.Equal("/one", original.SftpBookmarks[0].Path);
+            Assert.Single(original.SftpBookmarks);
+            Assert.Equal("/initial", clone.SftpStartPath);
+        }
+
+        [Fact]
         public void Json_EscapesWindowsPaths()
         {
             var settings = new FolderToolsSettings();

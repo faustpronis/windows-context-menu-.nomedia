@@ -55,6 +55,8 @@ namespace FolderTools.App
                     return RunTransfer(TransferAction.Copy, command);
                 case CommandKind.MoveTo:
                     return RunTransfer(TransferAction.Move, command);
+                case CommandKind.SelectFolder:
+                    return RunSelectFolder(command);
                 case CommandKind.SetDeskEdit:
                     ContextMenuInstaller.SetDeskEditPath(command.Value);
                     Report("Путь к DeskEdit сохранён.", command.Value);
@@ -162,6 +164,9 @@ namespace FolderTools.App
             FolderToolsSettings settings,
             System.Collections.Generic.IReadOnlyList<string> items)
         {
+            var initialOptions = new SftpTransferOptions { FileMode = destination.SftpChmodMode ?? "0644" };
+            if (!SftpTransferOptionsForm.TryShow(null, initialOptions, destination.SftpBookmarks, out SftpTransferOptions transferOptions))
+                return 0;
             SftpCredentialLookup credentials;
             try
             {
@@ -195,7 +200,8 @@ namespace FolderTools.App
                     (endpoint, fingerprint) => dialog.InvokeOnUi(() =>
                         ConfirmAndRememberSftpHostKey(endpoint, fingerprint, destination, settings, dialog)),
                     progress,
-                    cancellationToken)))
+                    cancellationToken,
+                    transferOptions)))
                 {
                     dialog.ShowDialog();
                 }
@@ -216,6 +222,56 @@ namespace FolderTools.App
                 ShowError("Ошибка SFTP-подключения к «" + destination.DisplayName + "»:\n\n" + ex.Message);
                 return 4;
             }
+        }
+
+        private static int RunSelectFolder(ParsedCommand command)
+        {
+            if (string.IsNullOrWhiteSpace(command.Folder) || command.Items.Count == 0)
+            {
+                ShowError("Для выбора удалённой папки требуется выбрать SFTP-получателя и хотя бы один локальный объект.");
+                return 2;
+            }
+            FolderToolsSettings settings = ContextMenuInstaller.LoadSettings();
+            Destination? destination = settings.Destinations.FirstOrDefault(d => string.Equals(d.Id, command.Folder, StringComparison.OrdinalIgnoreCase));
+            if (destination == null || destination.Type != DestinationType.Sftp)
+            {
+                ShowError("Выбор папки доступен только для настроенного SFTP-получателя.");
+                return 3;
+            }
+            SftpCredentialLookup credentials;
+            try { credentials = SftpCredentialStore.GetForUse(destination, settings.MasterPasswordHint, null); }
+            catch (Exception ex) { ShowError("Не удалось прочитать учётные данные SFTP:\n" + ex.Message); return 5; }
+            if (credentials.State != SftpCredentialState.Available)
+            {
+                ShowError("Пароль SFTP недоступен. Откройте настройки FolderTools и разблокируйте подключение.");
+                return 5;
+            }
+            try
+            {
+                Destination connection = destination.Clone();
+                string selectedRemotePath;
+                using (SftpDirectoryBrowserSession session = SftpTransferService.OpenDirectoryBrowser(connection,
+                    credentials.Username ?? string.Empty, credentials.Password ?? string.Empty,
+                    (endpoint, fingerprint) => ConfirmAndRememberSftpHostKey(endpoint, fingerprint, connection, settings)))
+                using (var browser = new SftpRemoteFolderBrowserForm(session,
+                    destination.SftpStartPath ?? destination.SftpRemotePath ?? string.Empty, destination.SftpBookmarks))
+                {
+                    if (browser.ShowDialog() != DialogResult.OK) return 0;
+                    selectedRemotePath = browser.SelectedPath;
+                    destination.SftpBookmarks = browser.Bookmarks.Select(b => b.Clone()).ToList();
+                    destination.SftpHostKeyFingerprint = connection.SftpHostKeyFingerprint;
+                    destination.SftpFallbacks = connection.SftpFallbacks;
+                    ContextMenuInstaller.SaveSettings(settings);
+                }
+                DialogResult choice = MessageBox.Show("Выбранная папка:\n" + selectedRemotePath +
+                    "\n\nДа — копировать\nНет — переместить\nОтмена — ничего не делать", "FolderTools — SFTP",
+                    MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+                if (choice == DialogResult.Cancel) return 0;
+                Destination transferDestination = destination.Clone();
+                transferDestination.SftpRemotePath = selectedRemotePath;
+                return RunSftpTransfer(choice == DialogResult.Yes ? TransferAction.Copy : TransferAction.Move, transferDestination, settings, command.Items);
+            }
+            catch (Exception ex) { ShowError("Не удалось открыть удалённый файловый менеджер:\n" + ex.Message); return 4; }
         }
 
         private static bool ConfirmAndRememberSftpHostKey(
@@ -263,6 +319,7 @@ namespace FolderTools.App
             string title = action == TransferAction.Copy ? "SFTP-копирование" : "SFTP-перемещение";
             string text = "Передача в «" + destination.DisplayName + "» " + state + ".\n\n" +
                           "Успешно: " + result.Completed.Count + "\n" +
+                          "Пропущено: " + result.Skipped.Count + "\n" +
                           "Ошибок: " + result.Errors.Count + "\n" +
                           "Передано: " + FormatBytes(result.BytesTransferred);
             if (result.Errors.Count > 0)
@@ -272,6 +329,12 @@ namespace FolderTools.App
                 {
                     text += "\n… и ещё " + (result.Errors.Count - 8) + " ошибок.";
                 }
+            }
+
+            if (result.Skipped.Count > 0)
+            {
+                text += "\n\nПропущенные объекты:\n" + string.Join("\n", result.Skipped.Take(8));
+                if (result.Skipped.Count > 8) text += "\n… и ещё " + (result.Skipped.Count - 8) + " объектов.";
             }
 
             MessageBox.Show(text, title, MessageBoxButtons.OK,

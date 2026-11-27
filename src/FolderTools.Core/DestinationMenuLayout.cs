@@ -128,6 +128,18 @@ namespace FolderTools.Core
                 {
                     AddSubmenu(entries, MenuLayout.ClassesRoot + @"\FolderTools.FileTools\shell\02moveto", "Переместить в", "FolderTools.FileTools.Move", applicable, TransferAction.Move, exePath, target, settings, true, baseDirectory);
                 }
+
+                List<Destination> sftpDestinations = applicable.Where(d => d.Type == DestinationType.Sftp).ToList();
+                if (sftpDestinations.Count > 0)
+                {
+                    string selectRoot = root + @"\ExtendedSubCommandsKey\Shell\05selectfolder";
+                    string store = isFiles ? "FolderTools.SelectFolder.Files" : "FolderTools.SelectFolder.Folders";
+                    AddSelectFolderSubmenu(entries, selectRoot, store, sftpDestinations, exePath, target, baseDirectory);
+                    if (isFiles)
+                    {
+                        AddSelectFolderSubmenu(entries, MenuLayout.ClassesRoot + @"\FolderTools.FileTools\shell\03selectfolder", store, sftpDestinations, exePath, target, baseDirectory);
+                    }
+                }
             }
 
             return entries;
@@ -155,6 +167,34 @@ namespace FolderTools.Core
         private const string MoveFiles = "FolderTools.MoveTo.Files";
         private const string CopyFolders = "FolderTools.CopyTo.Folders";
         private const string MoveFolders = "FolderTools.MoveTo.Folders";
+
+        private static void AddSelectFolderSubmenu(List<RegistryEntry> entries, string verbKey, string store, IReadOnlyList<Destination> destinations, string exePath, string target, string baseDirectory)
+        {
+            entries.Add(new RegistryEntry(verbKey, "MUIVerb", "Выбрать папку"));
+            entries.Add(new RegistryEntry(verbKey, "Icon", "\"" + exePath + "\",0"));
+            entries.Add(new RegistryEntry(verbKey, "ExtendedSubCommandsKey", store));
+            if (target != "Directory")
+            {
+                string? appliesTo = BuildAppliesTo(destinations.SelectMany(d => d.Patterns));
+                if (appliesTo != null) entries.Add(new RegistryEntry(verbKey, "AppliesTo", appliesTo));
+            }
+            AddSelectFolderChildren(entries, verbKey + @"\ExtendedSubCommandsKey\Shell", destinations, exePath, baseDirectory);
+            AddSelectFolderChildren(entries, MenuLayout.ClassesRoot + "\\" + store + @"\shell", destinations, exePath, baseDirectory);
+        }
+
+        private static void AddSelectFolderChildren(List<RegistryEntry> entries, string shellPath, IReadOnlyList<Destination> destinations, string exePath, string baseDirectory)
+        {
+            int index = 1;
+            foreach (Destination destination in destinations)
+            {
+                string verb = shellPath + "\\" + (index++).ToString("00");
+                entries.Add(new RegistryEntry(verb, "MUIVerb", destination.DisplayName));
+                string? icon = ResolveIconValue(exePath, baseDirectory, destination.IconPath);
+                if (icon != null) entries.Add(new RegistryEntry(verb, "Icon", icon));
+                entries.Add(new RegistryEntry(verb, "MultiSelectModel", "Player"));
+                entries.Add(new RegistryEntry(verb + @"\command", null, "\"" + exePath + "\" selectfolder \"" + destination.Id + "\" \"%1\""));
+            }
+        }
 
         private static string StoreFor(string target, TransferAction action)
         {

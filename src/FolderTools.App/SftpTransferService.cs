@@ -25,18 +25,20 @@ namespace FolderTools.App
 
     internal sealed class SftpTransferResult
     {
-        public SftpTransferResult(IReadOnlyList<string> completed, IReadOnlyList<string> errors, bool cancelled, long bytesTransferred)
+        public SftpTransferResult(IReadOnlyList<string> completed, IReadOnlyList<string> errors, bool cancelled, long bytesTransferred, IReadOnlyList<string>? skipped = null)
         {
             Completed = completed;
             Errors = errors;
             Cancelled = cancelled;
             BytesTransferred = bytesTransferred;
+            Skipped = skipped ?? Array.Empty<string>();
         }
 
         public IReadOnlyList<string> Completed { get; }
         public IReadOnlyList<string> Errors { get; }
         public bool Cancelled { get; }
         public long BytesTransferred { get; }
+        public IReadOnlyList<string> Skipped { get; }
         public bool HasErrors => Errors.Count > 0;
     }
 
@@ -69,7 +71,8 @@ namespace FolderTools.App
             string password,
             Func<SftpEndpoint, string, bool> trustUnknownHost,
             Action<SftpTransferProgress>? reportProgress = null,
-            CancellationToken cancellationToken = default(CancellationToken))
+            CancellationToken cancellationToken = default(CancellationToken),
+            SftpTransferOptions? transferOptions = null)
         {
             Validate(destination, username, password, trustUnknownHost);
             if ((destination.SftpChmodExtensions ?? new List<string>()).Count > 0 &&
@@ -80,6 +83,8 @@ namespace FolderTools.App
 
             var completed = new List<string>();
             var errors = new List<string>();
+            var skipped = new List<string>();
+            SftpTransferOptions options = transferOptions ?? new SftpTransferOptions();
             List<string> sources = (items ?? Enumerable.Empty<string>())
                 .Where(p => !string.IsNullOrWhiteSpace(p))
                 .ToList();
@@ -125,18 +130,21 @@ namespace FolderTools.App
 
                             string leaf = PathUtil.GetLeafName(source);
                             bool isDirectory = Directory.Exists(source);
-                            string target = FindAvailablePath(client, targetRoot, leaf, isDirectory);
+                            string target = JoinRemote(targetRoot, leaf);
                             if (isDirectory)
                             {
-                                UploadDirectory(client, source, target, destination, tracker, cancellationToken);
+                                bool allUploaded = UploadDirectory(client, source, target, destination, options, tracker, cancellationToken, skipped);
                                 if (action == TransferAction.Move)
                                 {
-                                    Directory.Delete(source, true);
+                                    if (allUploaded) Directory.Delete(source, true);
+                                    else skipped.Add(source + " (пропущены вложенные объекты)");
                                 }
+                                if (!allUploaded) { tracker.CompleteItem(source); continue; }
                             }
                             else
                             {
-                                UploadFileAtomically(client, source, target, destination, tracker, cancellationToken);
+                                if (!UploadFileAtomically(client, source, target, destination, options, tracker, cancellationToken))
+                                { skipped.Add(source); tracker.CompleteItem(source); continue; }
                                 if (action == TransferAction.Move)
                                 {
                                     File.Delete(source);
@@ -170,7 +178,7 @@ namespace FolderTools.App
 
             uploadedBytes = tracker.BytesTransferred;
             tracker.Report(cancelled ? "Передача отменена" : (errors.Count == 0 ? "Передача завершена" : "Передача завершена с ошибками"), string.Empty, 0, 0);
-            return new SftpTransferResult(completed, errors, cancelled, uploadedBytes);
+            return new SftpTransferResult(completed, errors, cancelled, uploadedBytes, skipped);
         }
 
         internal static void TestConnection(
@@ -679,57 +687,68 @@ namespace FolderTools.App
             throw new IOException("Не удалось подобрать свободное имя для «" + name + "».");
         }
 
-        private static void UploadDirectory(
+        private static bool UploadDirectory(
             SftpClient client,
             string localDirectory,
             string remoteDirectory,
             Destination destination,
+            SftpTransferOptions options,
             ProgressTracker tracker,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            List<string> skipped)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            string temporaryDirectory = remoteDirectory + ".foldertools-" + Guid.NewGuid().ToString("N") + ".uploading";
-            client.CreateDirectory(temporaryDirectory);
+            bool complete = true;
+            string? displaced = null;
+            if (client.Exists(remoteDirectory) && !client.GetAttributes(remoteDirectory).IsDirectory)
+            {
+                if (options.ConflictPolicy == SftpConflictPolicy.SkipExisting) { skipped.Add(localDirectory); return false; }
+                displaced = options.ConflictPolicy == SftpConflictPolicy.PreserveExistingWithConflictRename
+                    ? FindConflictPath(client, remoteDirectory)
+                    : remoteDirectory + ".foldertools-" + Guid.NewGuid().ToString("N") + ".backup";
+                client.RenameFile(remoteDirectory, displaced);
+            }
             try
             {
+                if (!client.Exists(remoteDirectory)) client.CreateDirectory(remoteDirectory);
                 foreach (string file in Directory.GetFiles(localDirectory))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    string remoteFile = JoinRemote(temporaryDirectory, Path.GetFileName(file));
-                    UploadFileAtomically(client, file, remoteFile, destination, tracker, cancellationToken);
+                    if (!UploadFileAtomically(client, file, JoinRemote(remoteDirectory, Path.GetFileName(file)), destination, options, tracker, cancellationToken))
+                    { skipped.Add(file); complete = false; }
                 }
                 foreach (string subdirectory in Directory.GetDirectories(localDirectory))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    UploadDirectory(client, subdirectory, JoinRemote(temporaryDirectory, Path.GetFileName(subdirectory)), destination, tracker, cancellationToken);
+                    if (!UploadDirectory(client, subdirectory, JoinRemote(remoteDirectory, Path.GetFileName(subdirectory)), destination, options, tracker, cancellationToken, skipped)) complete = false;
                 }
-
-                cancellationToken.ThrowIfCancellationRequested();
-                client.RenameFile(temporaryDirectory, remoteDirectory);
+                if (options.ApplyExplicitPermissions || options.UserId.HasValue || options.GroupId.HasValue)
+                    ApplyRemoteMetadata(client, remoteDirectory, options.ApplyExplicitPermissions ? options.DirectoryMode : null, options);
+                if (displaced != null && options.ConflictPolicy == SftpConflictPolicy.ReplaceAll) DeleteRemoteObject(client, displaced);
+                return complete;
             }
             catch
             {
-                try
+                if (displaced != null && client.Exists(displaced))
                 {
-                    DeleteRemoteDirectory(client, temporaryDirectory);
-                }
-                catch
-                {
-                    // Preserve the original error; local sources remain untouched.
+                    try { if (client.Exists(remoteDirectory)) DeleteRemoteObject(client, remoteDirectory); client.RenameFile(displaced, remoteDirectory); } catch { }
                 }
                 throw;
             }
         }
 
-        private static void UploadFileAtomically(
+        private static bool UploadFileAtomically(
             SftpClient client,
             string localFile,
             string remoteFile,
             Destination destination,
+            SftpTransferOptions options,
             ProgressTracker tracker,
             CancellationToken cancellationToken)
         {
+            if (client.Exists(remoteFile) && options.ConflictPolicy == SftpConflictPolicy.SkipExisting) return false;
             string temporary = remoteFile + ".foldertools-" + Guid.NewGuid().ToString("N") + ".uploading";
+            string? displaced = null;
             long expectedLength = new FileInfo(localFile).Length;
             tracker.BeginFile(localFile, expectedLength);
             try
@@ -759,10 +778,26 @@ namespace FolderTools.App
                     }
                     client.ChangePermissions(temporary, mode);
                 }
+                if (options.ApplyExplicitPermissions || options.UserId.HasValue || options.GroupId.HasValue)
+                    ApplyRemoteMetadata(client, temporary, options.ApplyExplicitPermissions ? options.FileMode : null, options);
 
                 cancellationToken.ThrowIfCancellationRequested();
-                client.RenameFile(temporary, remoteFile);
+                if (client.Exists(remoteFile))
+                {
+                    displaced = options.ConflictPolicy == SftpConflictPolicy.PreserveExistingWithConflictRename
+                        ? FindConflictPath(client, remoteFile)
+                        : remoteFile + ".foldertools-" + Guid.NewGuid().ToString("N") + ".backup";
+                    client.RenameFile(remoteFile, displaced);
+                }
+                try { client.RenameFile(temporary, remoteFile); }
+                catch
+                {
+                    if (displaced != null && client.Exists(displaced) && !client.Exists(remoteFile)) client.RenameFile(displaced, remoteFile);
+                    throw;
+                }
+                if (displaced != null && options.ConflictPolicy == SftpConflictPolicy.ReplaceAll) DeleteRemoteObject(client, displaced);
                 tracker.CompleteFile(localFile, expectedLength);
+                return true;
             }
             catch
             {
@@ -779,6 +814,42 @@ namespace FolderTools.App
                 }
                 throw;
             }
+        }
+
+        private static string FindConflictPath(SftpClient client, string path)
+        {
+            int slash = path.LastIndexOf('/');
+            string parent = slash <= 0 ? string.Empty : path.Substring(0, slash);
+            string name = slash < 0 ? path : path.Substring(slash + 1);
+            DateTime timestamp = DateTime.Now;
+            for (int sequence = 1; sequence < 10000; sequence++)
+            {
+                string candidate = JoinRemote(parent, SftpConflictNaming.CreateName(name, timestamp, sequence));
+                if (!client.Exists(candidate)) return candidate;
+            }
+            throw new IOException("Не удалось подобрать имя для резервного объекта: " + path);
+        }
+
+        private static void MoveConflictAside(SftpClient client, string path) => client.RenameFile(path, FindConflictPath(client, path));
+
+        private static void DeleteRemoteObject(SftpClient client, string path)
+        {
+            if (!client.Exists(path)) return;
+            if (client.GetAttributes(path).IsDirectory) DeleteRemoteDirectory(client, path);
+            else client.DeleteFile(path);
+        }
+
+        private static void ApplyRemoteMetadata(SftpClient client, string path, string? mode, SftpTransferOptions options)
+        {
+            var attributes = client.GetAttributes(path);
+            if (!string.IsNullOrWhiteSpace(mode))
+            {
+                if (!SftpPermissionRules.TryParseMode(mode, out short parsed)) throw new IOException("Некорректный chmod режим: " + mode);
+                attributes.SetPermissions(parsed);
+            }
+            if (options.UserId.HasValue) attributes.UserId = options.UserId.Value;
+            if (options.GroupId.HasValue) attributes.GroupId = options.GroupId.Value;
+            client.SetAttributes(path, attributes);
         }
 
         private static void DeleteRemoteDirectory(SftpClient client, string remoteDirectory)
@@ -955,6 +1026,28 @@ namespace FolderTools.App
                 .Select(entry => new SftpRemoteDirectory(entry.Name, entry.FullName))
                 .OrderBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
+        }
+
+        public string GetDirectorySummary(string path)
+        {
+            string normalized = (path ?? string.Empty).Trim().Replace('\\', '/');
+            if (normalized.Length == 0) normalized = _client.WorkingDirectory;
+            var attributes = _client.GetAttributes(normalized);
+            int mode = 0;
+            if (attributes.OwnerCanRead) mode |= 0400;
+            if (attributes.OwnerCanWrite) mode |= 0200;
+            if (attributes.OwnerCanExecute) mode |= 0100;
+            if (attributes.GroupCanRead) mode |= 0040;
+            if (attributes.GroupCanWrite) mode |= 0020;
+            if (attributes.GroupCanExecute) mode |= 0010;
+            if (attributes.OthersCanRead) mode |= 0004;
+            if (attributes.OthersCanWrite) mode |= 0002;
+            if (attributes.OthersCanExecute) mode |= 0001;
+            if (attributes.IsUIDBitSet) mode |= 04000;
+            if (attributes.IsGroupIDBitSet) mode |= 02000;
+            if (attributes.IsStickyBitSet) mode |= 01000;
+            return "Права текущей (родительской) папки: " + Convert.ToString(mode, 8).PadLeft(4, '0') +
+                   "  ·  UID " + attributes.UserId + "  ·  GID " + attributes.GroupId;
         }
 
         public void Dispose()

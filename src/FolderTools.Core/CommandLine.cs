@@ -15,6 +15,7 @@ namespace FolderTools.Core
         ShellNew,
         CopyTo,
         MoveTo,
+        SelectFolder,
         Version,
         Help,
         Unknown
@@ -84,6 +85,9 @@ namespace FolderTools.Core
                         first,
                         null,
                         items);
+                case "selectfolder":
+                    return new ParsedCommand(CommandKind.SelectFolder, first, null,
+                        args.Count > 2 ? args.Skip(2).ToList() : Array.Empty<string>());
                 case "settings":
                 case "config":
                     return new ParsedCommand(CommandKind.Settings, null, null);
@@ -138,7 +142,8 @@ namespace FolderTools.Core
             "  FolderTools.exe -r, -remove, --uninstall Удалить пункт из контекстного меню\n" +
             "  FolderTools.exe nomedia \"<папка>\"        Создать или обновить .nomedia\n" +
             "  FolderTools.exe shellnew \"<файл>\"         Обработать файл из меню «Создать»\n" +
-            "  FolderTools.exe deskedit \"<папка>\"        Открыть desktop.ini в DeskEdit\n" +
+                "  FolderTools.exe deskedit \"<папка>\"        Открыть desktop.ini в DeskEdit\n" +
+                "  FolderTools.exe selectfolder <id> \"<путь>\" Выбрать удалённую папку SFTP\n" +
             "  FolderTools.exe set-deskedit \"<путь>\"     Запомнить путь к DeskEdit.exe\n" +
             "  FolderTools.exe -v, --version            Показать версию\n";
     }

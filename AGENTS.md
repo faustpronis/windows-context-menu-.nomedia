@@ -118,6 +118,14 @@ dotnet test src/FolderTools.Tests/FolderTools.Tests.csproj
   Backend discovery и remote test выполняются выбранным бинарником; тест сейчас
   проверяет доступность/listing, не запись. Не заявлять поддержку передачи файлов
   через облачные remote-ы или GUI их настройки, пока эти функции не реализованы.
+- SFTP folder picker, start path и bookmarks scoped per destination. Закладки могут
+  содержать optional file/directory chmod и UID/GID. Server-reported attributes are
+  informational; chmod/chown failures must retain local Move sources. Directory copy
+  is a recursive merge and must not delete remote-only objects. Conflict rename format
+  is `name-conflict-yyyy-MM-dd_HH-mm-ss.ext` with numeric suffix on collision.
+- SFTP transfer policy is explicit per operation (replace, skip, preserve existing),
+  and skips/errors must be reported separately. The SFTP picker is not a cloud picker;
+  do not imply that rclone/bclone transfer or remote browsing is implemented.
 - Иконки пунктов: `IconStore.Import` копирует `.ico` в `icons\` и возвращает путь
   через `AppPaths.ToStored`, то есть относительный. В реестр абсолютный путь
   подставляет `DestinationMenuLayout.ResolveIconValue`; отсутствующий файл не

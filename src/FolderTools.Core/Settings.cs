@@ -23,7 +23,6 @@ namespace FolderTools.Core
         public string Host { get; set; } = string.Empty;
         public int Port { get; set; } = 22;
         public string? HostKeyFingerprint { get; set; }
-
         /// <summary>Runtime marker; primary endpoint is persisted in Destination's legacy fields.</summary>
         public bool IsPrimary { get; set; }
 
@@ -31,6 +30,39 @@ namespace FolderTools.Core
         {
             return new SftpEndpoint { Host = Host, Port = Port, HostKeyFingerprint = HostKeyFingerprint, IsPrimary = IsPrimary };
         }
+    }
+
+    /// <summary>A per-destination remote folder bookmark and optional transfer metadata preset.</summary>
+    public sealed class SftpBookmark
+    {
+        public SftpBookmark()
+        {
+            Id = Guid.NewGuid().ToString("N");
+            Name = string.Empty;
+            Path = string.Empty;
+            Category = string.Empty;
+        }
+
+        public string Id { get; set; }
+        public string Name { get; set; }
+        public string Path { get; set; }
+        public string Category { get; set; }
+        public string? FileMode { get; set; }
+        public string? DirectoryMode { get; set; }
+        public int? UserId { get; set; }
+        public int? GroupId { get; set; }
+
+        public SftpBookmark Clone() => new SftpBookmark
+        {
+            Id = Id,
+            Name = Name,
+            Path = Path,
+            Category = Category,
+            FileMode = FileMode,
+            DirectoryMode = DirectoryMode,
+            UserId = UserId,
+            GroupId = GroupId
+        };
     }
 
     /// <summary>
@@ -47,6 +79,7 @@ namespace FolderTools.Core
             Path = string.Empty;
             Patterns = new List<string>();
             SftpFallbacks = new List<SftpEndpoint>();
+            SftpBookmarks = new List<SftpBookmark>();
             SftpChmodExtensions = new List<string>();
             SftpChmodMode = "0644";
         }
@@ -58,40 +91,33 @@ namespace FolderTools.Core
             Path = path;
             Patterns = new List<string>(patterns);
             SftpFallbacks = new List<SftpEndpoint>();
+            SftpBookmarks = new List<SftpBookmark>();
             SftpChmodExtensions = new List<string>();
             SftpChmodMode = "0644";
         }
 
         /// <summary>Stable identity, so renaming a destination does not lose its menu slot.</summary>
         public string Id { get; set; }
-
         /// <summary>Text shown in the menu; falls back to the folder name when empty.</summary>
         public string Name { get; set; }
-
         public string Path { get; set; }
-
         public DestinationType Type { get; set; }
-
         public string? SftpHost { get; set; }
-
         public int SftpPort { get; set; } = 22;
-
         public string? SftpRemotePath { get; set; }
-
+        /// <summary>Initial location shown by the remote folder browser; independent of the transfer target.</summary>
+        public string? SftpStartPath { get; set; }
         public string? SftpHostKeyFingerprint { get; set; }
-
         /// <summary>Alternative host/port pairs, each with its own pinned SSH key.</summary>
         public List<SftpEndpoint> SftpFallbacks { get; set; }
-
+        /// <summary>Bookmarks are scoped to this destination/connection.</summary>
+        public List<SftpBookmark> SftpBookmarks { get; set; }
         /// <summary>Extensions to chmod after successful publication; values include the leading dot.</summary>
         public List<string> SftpChmodExtensions { get; set; }
-
         /// <summary>Unix permission mode in octal notation, e.g. 0644 or 0755.</summary>
         public string SftpChmodMode { get; set; }
-
         /// <summary>Username may travel with the portable config; the password never does in clear text.</summary>
         public string? SftpUsername { get; set; }
-
         /// <summary>Authenticated, master-password-encrypted portable SFTP password payload.</summary>
         public string? SftpPasswordEncrypted { get; set; }
 
@@ -101,17 +127,10 @@ namespace FolderTools.Core
 
         /// <summary>Extension patterns such as "*.txt" or "photo!.jpg".</summary>
         public List<string> Patterns { get; set; }
-
         /// <summary>Category this destination belongs to, or null for the top level.</summary>
         public string? Category { get; set; }
-
-        /// <summary>
-        /// Icon for this menu entry, stored relative to the installation folder
-        /// ("icons\name.ico") so the whole folder stays movable. Null means the
-        /// tool's own icon.
-        /// </summary>
+        /// <summary>Icon for this menu entry, stored relative to the installation folder.</summary>
         public string? IconPath { get; set; }
-
         /// <summary>True when at least one usable pattern is configured.</summary>
         public bool IsEnabled => Patterns.Any(p => ExtensionPattern.Normalize(p).Length > 0);
 
@@ -119,11 +138,7 @@ namespace FolderTools.Core
         {
             get
             {
-                if (!string.IsNullOrWhiteSpace(Name))
-                {
-                    return Name.Trim();
-                }
-
+                if (!string.IsNullOrWhiteSpace(Name)) return Name.Trim();
                 string trimmed = EffectivePath.TrimEnd('\\', '/');
                 int slash = trimmed.LastIndexOfAny(new[] { '\\', '/' });
                 return slash >= 0 && slash < trimmed.Length - 1 ? trimmed.Substring(slash + 1) : trimmed;
@@ -135,10 +150,7 @@ namespace FolderTools.Core
             return Patterns.Any(p => ExtensionPattern.IsMatch(p, extension, isDirectory));
         }
 
-        /// <summary>
-        /// True when the item satisfies any pattern. Uses the full name so a pattern
-        /// like "фото!.jpg" routes the same files the shell filter shows the verb for.
-        /// </summary>
+        /// <summary>True when the item satisfies any pattern.</summary>
         public bool MatchesPath(string? path, bool isDirectory = false)
         {
             return Patterns.Any(p => ExtensionPattern.IsMatchName(p, path, isDirectory));
@@ -154,8 +166,10 @@ namespace FolderTools.Core
                 SftpHost = SftpHost,
                 SftpPort = SftpPort,
                 SftpRemotePath = SftpRemotePath,
+                SftpStartPath = SftpStartPath,
                 SftpHostKeyFingerprint = SftpHostKeyFingerprint,
                 SftpFallbacks = (SftpFallbacks ?? new List<SftpEndpoint>()).Select(e => e.Clone()).ToList(),
+                SftpBookmarks = (SftpBookmarks ?? new List<SftpBookmark>()).Select(b => b.Clone()).ToList(),
                 SftpChmodExtensions = new List<string>(SftpChmodExtensions ?? new List<string>()),
                 SftpChmodMode = SftpChmodMode,
                 SftpUsername = SftpUsername,
@@ -180,13 +194,8 @@ namespace FolderTools.Core
         }
 
         public string Id { get; set; }
-
         public string Name { get; set; }
-
-        public DestinationCategory Clone()
-        {
-            return new DestinationCategory(Id, Name);
-        }
+        public DestinationCategory Clone() => new DestinationCategory(Id, Name);
     }
 
     /// <summary>Everything the user can configure, serialised to JSON next to the exe.</summary>
@@ -201,24 +210,11 @@ namespace FolderTools.Core
 
         /// <summary>Schema marker so a future version can migrate an old file.</summary>
         public int SchemaVersion { get; set; } = 1;
-
         public List<DestinationCategory> Categories { get; set; }
-
         public List<Destination> Destinations { get; set; }
-
-        /// <summary>
-        /// Path to the desktop.ini editor. Stored relatively when the editor sits
-        /// inside the installation folder, so the whole folder stays movable.
-        /// </summary>
         public string? DeskEditPath { get; set; }
-
-        /// <summary>Whether a confirmation is shown after a successful transfer.</summary>
         public bool ShowSuccess { get; set; }
-
-        /// <summary>Selected optional cloud backend engine; values are "rclone" or "bclone".</summary>
         public string RemoteEngine { get; set; }
-
-        /// <summary>Optional reminder for the master password. It is not secret and is not used as key material.</summary>
         public string? MasterPasswordHint { get; set; }
 
         public FolderToolsSettings Clone()
@@ -235,12 +231,9 @@ namespace FolderTools.Core
             };
         }
 
-        /// <summary>Destinations that should appear in the menu for the given action.</summary>
         public IReadOnlyList<Destination> EnabledDestinations()
         {
-            return Destinations
-                .Where(d => d.IsEnabled && !string.IsNullOrWhiteSpace(d.EffectivePath))
-                .ToList();
+            return Destinations.Where(d => d.IsEnabled && !string.IsNullOrWhiteSpace(d.EffectivePath)).ToList();
         }
     }
 }

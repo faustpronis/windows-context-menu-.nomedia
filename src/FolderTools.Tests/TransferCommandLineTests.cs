@@ -26,6 +26,15 @@ namespace FolderTools.Tests
         }
 
         [Fact]
+        public void SelectFolder_ParsesSftpDestinationAndSelectedItem()
+        {
+            ParsedCommand command = CommandLine.Parse(new[] { "selectfolder", "remote-id", @"C:\a.txt" });
+            Assert.Equal(CommandKind.SelectFolder, command.Kind);
+            Assert.Equal("remote-id", command.Folder);
+            Assert.Equal(new[] { @"C:\a.txt" }, command.Items);
+        }
+
+        [Fact]
         public void CopyTo_AcceptsSeveralItemsForManualUse()
         {
             ParsedCommand command = CommandLine.Parse(new[] { "copyto", "id", @"C:\a.txt", @"C:\b.jpg" });

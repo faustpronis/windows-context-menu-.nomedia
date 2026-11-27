@@ -16,6 +16,7 @@ namespace FolderTools.App
         private readonly NumericUpDown _port = new NumericUpDown();
         private readonly TextBox _fallbacks = new TextBox();
         private readonly TextBox _remotePath = new TextBox();
+        private readonly TextBox _startPath = new TextBox();
         private readonly TextBox _username = new TextBox();
         private readonly TextBox _password = new TextBox();
         private readonly TextBox _chmodExtensions = new TextBox();
@@ -59,7 +60,7 @@ namespace FolderTools.App
                 Dock = DockStyle.Fill,
                 Padding = new Padding(12),
                 ColumnCount = 2,
-                RowCount = 13,
+                RowCount = 14,
                 AutoSize = false
             };
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 155));
@@ -69,11 +70,10 @@ namespace FolderTools.App
                 layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
             }
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 84));
-            for (int i = 0; i < 3; i++)
+            for (int i = 0; i < 5; i++)
             {
                 layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
             }
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
@@ -105,20 +105,30 @@ namespace FolderTools.App
             remotePathRow.Controls.Add(browseRemote, 1, 0);
             layout.Controls.Add(new Label { Text = "Удалённая папка:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 4);
             layout.Controls.Add(remotePathRow, 1, 4);
-            AddRow(layout, 5, "Пользователь:", _username);
+            var startPathRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1 };
+            startPathRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            startPathRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));
+            _startPath.Dock = DockStyle.Fill;
+            var browseStart = new Button { Text = "Обзор…", Dock = DockStyle.Fill };
+            browseStart.Click += (s, e) => BrowseRemoteFolder(true);
+            startPathRow.Controls.Add(_startPath, 0, 0);
+            startPathRow.Controls.Add(browseStart, 1, 0);
+            layout.Controls.Add(new Label { Text = "Стартовая папка:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 5);
+            layout.Controls.Add(startPathRow, 1, 5);
+            AddRow(layout, 6, "Пользователь:", _username);
             _password.UseSystemPasswordChar = true;
-            AddRow(layout, 6, "Пароль:", _password);
+            AddRow(layout, 7, "Пароль:", _password);
 
             _credentialStatus.Dock = DockStyle.Fill;
             _credentialStatus.TextAlign = ContentAlignment.MiddleLeft;
             _credentialStatus.ForeColor = Color.FromArgb(80, 80, 80);
-            layout.Controls.Add(new Label { Text = "Хранение пароля:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 7);
-            layout.Controls.Add(_credentialStatus, 1, 7);
+            layout.Controls.Add(new Label { Text = "Хранение пароля:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 8);
+            layout.Controls.Add(_credentialStatus, 1, 8);
 
             _hostKeyStatus.Dock = DockStyle.Fill;
             _hostKeyStatus.TextAlign = ContentAlignment.MiddleLeft;
             _hostKeyStatus.ForeColor = Color.FromArgb(80, 80, 80);
-            layout.Controls.Add(new Label { Text = "Ключи серверов:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 8);
+            layout.Controls.Add(new Label { Text = "Ключи серверов:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 9);
             var hostKeyRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1 };
             hostKeyRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             hostKeyRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 155));
@@ -135,12 +145,12 @@ namespace FolderTools.App
             };
             hostKeyRow.Controls.Add(_hostKeyStatus, 0, 0);
             hostKeyRow.Controls.Add(forgetHostKey, 1, 0);
-            layout.Controls.Add(hostKeyRow, 1, 8);
+            layout.Controls.Add(hostKeyRow, 1, 9);
 
             _chmodExtensions.Multiline = true;
             _chmodExtensions.Dock = DockStyle.Fill;
-            AddRow(layout, 9, "chmod расширения:", _chmodExtensions);
-            AddRow(layout, 10, "chmod режим (octal):", _chmodMode);
+            AddRow(layout, 10, "chmod расширения:", _chmodExtensions);
+            AddRow(layout, 11, "chmod режим (octal):", _chmodMode);
 
             var note = new Label
             {
@@ -151,7 +161,7 @@ namespace FolderTools.App
                 ForeColor = Color.FromArgb(70, 70, 70),
                 AutoSize = false
             };
-            layout.Controls.Add(note, 0, 11);
+            layout.Controls.Add(note, 0, 12);
             layout.SetColumnSpan(note, 2);
 
             var buttons = new FlowLayoutPanel
@@ -168,7 +178,7 @@ namespace FolderTools.App
             buttons.Controls.Add(save);
             buttons.Controls.Add(cancel);
             buttons.Controls.Add(test);
-            layout.Controls.Add(buttons, 0, 12);
+            layout.Controls.Add(buttons, 0, 13);
             layout.SetColumnSpan(buttons, 2);
 
             Controls.Add(layout);
@@ -194,6 +204,7 @@ namespace FolderTools.App
                 .Select(e => FormatEndpoint(e, primaryPort))
                 .ToArray();
             _remotePath.Text = _editedDestination.SftpRemotePath ?? string.Empty;
+            _startPath.Text = _editedDestination.SftpStartPath ?? string.Empty;
             _username.Text = _credentials.State == SftpCredentialState.Available
                 ? _credentials.Username ?? string.Empty
                 : _editedDestination.SftpUsername ?? string.Empty;
@@ -271,6 +282,7 @@ namespace FolderTools.App
             _editedDestination.SftpHost = newHost;
             _editedDestination.SftpPort = newPort;
             _editedDestination.SftpRemotePath = _remotePath.Text.Trim();
+            _editedDestination.SftpStartPath = _startPath.Text.Trim();
             _editedDestination.SftpFallbacks = ParseFallbacks(_fallbacks.Lines, newPort, _editedDestination.SftpFallbacks);
             _editedDestination.SftpChmodExtensions = SftpPermissionRules.ParseExtensions(_chmodExtensions.Text).ToList();
             if (!SftpPermissionRules.TryParseMode(_chmodMode.Text, out _))
@@ -358,6 +370,11 @@ namespace FolderTools.App
 
         private void BrowseRemoteFolder()
         {
+            BrowseRemoteFolder(false);
+        }
+
+        private void BrowseRemoteFolder(bool chooseStartPath)
+        {
             _remoteBrowseSucceeded = false;
             try
             {
@@ -371,15 +388,29 @@ namespace FolderTools.App
                     username,
                     password,
                     ConfirmUnknownHostKey))
-                using (var browser = new SftpRemoteFolderBrowserForm(session, edited.SftpRemotePath ?? string.Empty))
                 {
-                    if (browser.ShowDialog(this) == DialogResult.OK)
+                    string initialPath = chooseStartPath
+                        ? (_startPath.Text.Trim().Length == 0 ? edited.SftpStartPath ?? string.Empty : _startPath.Text.Trim())
+                        : edited.SftpRemotePath ?? string.Empty;
+                    using (var browser = new SftpRemoteFolderBrowserForm(session, initialPath, edited.SftpBookmarks))
                     {
-                        _remotePath.Text = browser.SelectedPath;
-                        edited.SftpRemotePath = browser.SelectedPath;
-                        _editedDestination.SftpHostKeyFingerprint = edited.SftpHostKeyFingerprint;
-                        _editedDestination.SftpFallbacks = edited.SftpFallbacks;
-                        _remoteBrowseSucceeded = true;
+                        if (browser.ShowDialog(this) == DialogResult.OK)
+                        {
+                            if (chooseStartPath)
+                            {
+                                _startPath.Text = browser.SelectedPath;
+                                edited.SftpStartPath = browser.SelectedPath;
+                            }
+                            else
+                            {
+                                _remotePath.Text = browser.SelectedPath;
+                                edited.SftpRemotePath = browser.SelectedPath;
+                            }
+                            _editedDestination.SftpBookmarks = browser.Bookmarks.Select(b => b.Clone()).ToList();
+                            _editedDestination.SftpHostKeyFingerprint = edited.SftpHostKeyFingerprint;
+                            _editedDestination.SftpFallbacks = edited.SftpFallbacks;
+                            _remoteBrowseSucceeded = true;
+                        }
                     }
                 }
             }
@@ -399,6 +430,8 @@ namespace FolderTools.App
             }
 
             _destination.SftpRemotePath = _remotePath.Text.Trim();
+            _destination.SftpStartPath = _startPath.Text.Trim();
+            _destination.SftpBookmarks = _editedDestination.SftpBookmarks.Select(b => b.Clone()).ToList();
             _destination.SftpHostKeyFingerprint = _editedDestination.SftpHostKeyFingerprint;
             _destination.SftpFallbacks = _editedDestination.SftpFallbacks;
             return true;
@@ -582,6 +615,8 @@ namespace FolderTools.App
             _destination.SftpHost = edited.SftpHost;
             _destination.SftpPort = edited.SftpPort;
             _destination.SftpRemotePath = edited.SftpRemotePath;
+            _destination.SftpStartPath = edited.SftpStartPath;
+            _destination.SftpBookmarks = edited.SftpBookmarks.Select(b => b.Clone()).ToList();
             _destination.SftpHostKeyFingerprint = edited.SftpHostKeyFingerprint;
             _destination.SftpFallbacks = edited.SftpFallbacks;
             _destination.SftpChmodExtensions = edited.SftpChmodExtensions;

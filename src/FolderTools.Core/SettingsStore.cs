@@ -155,6 +155,25 @@ namespace FolderTools.Core
                     entry.Add("sftpFallbacks", fallbacks)
                         .Add("sftpChmodExtensions", destination.SftpChmodExtensions ?? new List<string>())
                         .Add("sftpChmodMode", string.IsNullOrWhiteSpace(destination.SftpChmodMode) ? "0644" : destination.SftpChmodMode);
+                    if (!string.IsNullOrWhiteSpace(destination.SftpStartPath))
+                    {
+                        entry.Add("sftpStartPath", destination.SftpStartPath);
+                    }
+                    var bookmarks = new JsonArray();
+                    foreach (SftpBookmark bookmark in destination.SftpBookmarks ?? new List<SftpBookmark>())
+                    {
+                        var item = new JsonObject()
+                            .Add("id", bookmark.Id)
+                            .Add("name", bookmark.Name)
+                            .Add("path", bookmark.Path)
+                            .Add("category", bookmark.Category ?? string.Empty);
+                        if (!string.IsNullOrWhiteSpace(bookmark.FileMode)) item.Add("fileMode", bookmark.FileMode);
+                        if (!string.IsNullOrWhiteSpace(bookmark.DirectoryMode)) item.Add("directoryMode", bookmark.DirectoryMode);
+                        if (bookmark.UserId.HasValue) item.Add("userId", bookmark.UserId.Value);
+                        if (bookmark.GroupId.HasValue) item.Add("groupId", bookmark.GroupId.Value);
+                        bookmarks.Add(item);
+                    }
+                    entry.Add("sftpBookmarks", bookmarks);
                     if (!string.IsNullOrWhiteSpace(destination.SftpUsername))
                     {
                         entry.Add("sftpUsername", destination.SftpUsername);
@@ -260,8 +279,10 @@ namespace FolderTools.Core
                         SftpHost = entry.GetString("sftpHost"),
                         SftpPort = entry.GetInt("sftpPort", 22),
                         SftpRemotePath = entry.GetString("sftpRemotePath"),
+                        SftpStartPath = entry.GetString("sftpStartPath"),
                         SftpHostKeyFingerprint = entry.GetString("sftpHostKeyFingerprint"),
                         SftpFallbacks = ReadSftpFallbacks(entry),
+                        SftpBookmarks = ReadSftpBookmarks(entry),
                         SftpChmodExtensions = ReadStringArray(entry.GetArray("sftpChmodExtensions")),
                         SftpChmodMode = entry.GetString("sftpChmodMode") ?? "0644",
                         SftpUsername = entry.GetString("sftpUsername"),
@@ -272,6 +293,40 @@ namespace FolderTools.Core
             }
 
             return settings;
+        }
+
+        private static List<SftpBookmark> ReadSftpBookmarks(JsonObject entry)
+        {
+            var result = new List<SftpBookmark>();
+            JsonArray? array = entry.GetArray("sftpBookmarks");
+            if (array == null) return result;
+            foreach (JsonNode node in array.Items)
+            {
+                if (!(node is JsonObject item)) continue;
+                string path = item.GetString("path") ?? string.Empty;
+                string name = item.GetString("name") ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(name)) continue;
+                int? userId = ReadOptionalNonNegativeInt(item, "userId");
+                int? groupId = ReadOptionalNonNegativeInt(item, "groupId");
+                result.Add(new SftpBookmark
+                {
+                    Id = item.GetString("id") ?? Guid.NewGuid().ToString("N"),
+                    Name = name,
+                    Path = path,
+                    Category = item.GetString("category") ?? string.Empty,
+                    FileMode = item.GetString("fileMode"),
+                    DirectoryMode = item.GetString("directoryMode"),
+                    UserId = userId,
+                    GroupId = groupId
+                });
+            }
+            return result;
+        }
+
+        private static int? ReadOptionalNonNegativeInt(JsonObject item, string key)
+        {
+            int value = item.GetInt(key, -1);
+            return value >= 0 ? (int?)value : null;
         }
 
         private static List<SftpEndpoint> ReadSftpFallbacks(JsonObject entry)
