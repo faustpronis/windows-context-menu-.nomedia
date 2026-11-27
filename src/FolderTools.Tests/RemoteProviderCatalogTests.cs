@@ -7,6 +7,20 @@ namespace FolderTools.Tests
     public class RemoteProviderCatalogTests
     {
         [Fact]
+        public void Parse_ReadsActualRcloneRegistryArray()
+        {
+            const string json = "[{\"Name\":\"alias\",\"Description\":\"Alias for an existing remote\",\"Prefix\":\"alias\",\"Options\":[{\"Name\":\"remote\",\"FieldName\":\"\",\"Help\":\"Remote to alias\"}]},{\"Name\":\"drive\",\"Description\":\"Google Drive\",\"Prefix\":\"drive\",\"Options\":[]}]";
+
+            var providers = RemoteProviderCatalog.Parse(json);
+
+            Assert.Equal(2, providers.Count);
+            Assert.Equal("alias", providers[0].Name);
+            Assert.Equal("Alias for an existing remote", providers[0].Description);
+            Assert.Equal("drive", providers[1].Name);
+            Assert.Equal("Google Drive", providers[1].Description);
+        }
+
+        [Fact]
         public void Parse_ReadsRegistryKeyedByBackendName()
         {
             const string json = "{\"dropbox\":{\"Name\":\"dropbox\",\"Description\":\"Dropbox\"},\"drive\":{\"Name\":\"drive\",\"Description\":\"Google Drive\"}}";

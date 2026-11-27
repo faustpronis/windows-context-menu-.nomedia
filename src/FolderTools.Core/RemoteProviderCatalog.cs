@@ -20,30 +20,33 @@ namespace FolderTools.Core
     {
         public static IReadOnlyList<RemoteProviderDefinition> Parse(string json)
         {
-            JsonObject root = JsonNode.Parse(json) as JsonObject
-                ?? throw new JsonException("Provider catalogue root must be a JSON object.");
             var providers = new List<RemoteProviderDefinition>();
-
-            JsonArray? wrapped = GetArray(root, "Providers");
-            if (wrapped != null)
+            JsonNode root = JsonNode.Parse(json);
+            if (root is JsonArray directArray)
             {
-                foreach (JsonNode item in wrapped.Items)
+                AddProviders(providers, directArray);
+            }
+            else if (root is JsonObject rootObject)
+            {
+                JsonArray? wrapped = GetArray(rootObject, "Providers");
+                if (wrapped != null)
                 {
-                    JsonObject? provider = item as JsonObject;
-                    if (provider == null) continue;
-                    AddProvider(providers, provider, null);
+                    AddProviders(providers, wrapped);
+                }
+                else
+                {
+                    // Retain support for wrappers that key provider objects by name.
+                    foreach (KeyValuePair<string, JsonNode> entry in rootObject.Members)
+                    {
+                        JsonObject? provider = entry.Value as JsonObject;
+                        if (provider == null) continue;
+                        AddProvider(providers, provider, entry.Key);
+                    }
                 }
             }
             else
             {
-                // rclone and bclone currently marshal fs.Registry directly: the JSON
-                // object is keyed by backend name instead of having a Providers array.
-                foreach (KeyValuePair<string, JsonNode> entry in root.Members)
-                {
-                    JsonObject? provider = entry.Value as JsonObject;
-                    if (provider == null) continue;
-                    AddProvider(providers, provider, entry.Key);
-                }
+                throw new JsonException("Provider catalogue root must be a JSON array or object.");
             }
 
             if (providers.Count == 0)
@@ -51,6 +54,15 @@ namespace FolderTools.Core
                 throw new JsonException("Provider catalogue contains no recognizable backends.");
             }
             return providers;
+        }
+
+        private static void AddProviders(List<RemoteProviderDefinition> providers, JsonArray array)
+        {
+            foreach (JsonNode item in array.Items)
+            {
+                JsonObject? provider = item as JsonObject;
+                if (provider != null) AddProvider(providers, provider, null);
+            }
         }
 
         private static JsonArray? GetArray(JsonObject value, string name)
